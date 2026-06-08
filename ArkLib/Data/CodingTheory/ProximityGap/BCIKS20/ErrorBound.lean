@@ -8,6 +8,15 @@ Authors: Quang Dao, Katerina Hristova, František Silváši, Julian Sutherland,
 import ArkLib.Data.CodingTheory.ProximityGap.BCIKS20.Prelude
 import ArkLib.Data.CodingTheory.ReedSolomon
 
+/-!
+# BCIKS20 error bound for Reed-Solomon proximity-gap parameter pairs
+
+This file defines `errorBound`, the error parameter `ε` paired with a proximity parameter `δ`
+for Reed-Solomon codes, covering the unique-decoding regime `δ ∈ (0, (1-ρ)/2]` and the Johnson
+regime `δ ∈ ((1-ρ)/2, 1 - √ρ)` (and `ε = 0` otherwise), where `ρ` is the code's rate. It is
+the quantity used by the affine-line and curve correlated-agreement statements of [BCIKS20].
+-/
+
 namespace ProximityGap
 
 open NNReal Finset Function Code

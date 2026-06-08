@@ -1,0 +1,103 @@
+% Copyright (c) 2025 ZKLib Contributors. All rights reserved.
+% Released under Apache 2.0 license as described in the file LICENSE.
+
+\section{FRI}\label{sec:fri}
+
+FRI (Fast Reed--Solomon Interactive Oracle Proof of Proximity) is an IOPP for testing proximity
+of a function $f : \evaldomain \to \field$ to a Reed--Solomon code. It proceeds in two phases: a
+\emph{folding phase} of $k$ commit-and-fold rounds (each halving the degree bound via a
+verifier-chosen challenge), followed by a \emph{query phase} that checks round-to-round
+consistency at random points. The ArkLib formalization realizes the protocol as a sequential
+composition of single-round oracle reductions, so completeness and the error accounting are
+obtained from the generic composition keystones of
+Chapter~\ref{chap:oracle_reductions} rather than re-proved per round.
+
+\subsection{Protocol specification}\label{sec:fri_spec}
+
+\begin{definition}[FRI input relation]\label{def:fri_input_relation}
+\lean{Fri.Spec.inputRelation}
+\uses{def:distance_from_code,def:reed_solomon_code}
+    The input relation asserts that the committed oracle is $\distance$-close to the
+    Reed--Solomon code $\rscode[\field,\evaldomain,\degree]$ of degree
+    $\degree = \sum_{i} s_i \cdot d$, i.e. $\Delta(f,\rscode[\field,\evaldomain,\degree]) \le
+    \distance$.
+\end{definition}
+
+\begin{definition}[FRI output relation]\label{def:fri_output_relation}
+\lean{Fri.Spec.outputRelation}
+\uses{def:fri_input_relation}
+    The output relation pairs the final folded statement with the low-degree polynomial witness
+    extracted at the end of the folding phase.
+\end{definition}
+
+\begin{definition}[Folding-phase reduction]\label{def:fri_reduction_fold}
+\lean{Fri.Spec.reductionFold}
+\uses{def:fri_input_relation,def:fri_output_relation}
+    The folding phase is the sequential composition of the $k$ per-round folding reductions
+    followed by the final-fold reduction. Each round consumes one verifier challenge and emits the
+    folded oracle of halved degree bound.
+\end{definition}
+
+\begin{definition}[Full FRI reduction]\label{def:fri_reduction}
+\lean{Fri.Spec.reduction}
+\uses{def:fri_reduction_fold}
+    The full FRI reduction composes the folding phase (Definition~\ref{def:fri_reduction_fold})
+    with the query phase, yielding an oracle reduction from the input relation
+    (Definition~\ref{def:fri_input_relation}) to the output relation
+    (Definition~\ref{def:fri_output_relation}).
+\end{definition}
+
+\subsection{Perfect completeness}\label{sec:fri_completeness}
+
+Completeness is layered: per-round honest-protocol completeness ("bricks") is composed into
+fold-phase and full-protocol completeness using the generic append/seq-compose keystones. The
+composition theorems are fully proved; the per-round bricks are tracked as named residual
+predicates.
+
+\begin{definition}[Completeness residual]\label{def:fri_completeness_residual}
+\lean{Fri.Spec.Completeness.reductionPerfectCompletenessResidual}
+    The named predicate stating perfect completeness of the full FRI reduction in terms of the
+    fold-phase and query-phase per-round completeness obligations.
+\end{definition}
+
+\begin{theorem}[FRI perfect completeness]\label{thm:fri_completeness}
+\lean{Fri.Spec.Completeness.reduction_perfectCompleteness}
+\uses{def:fri_reduction,def:fri_completeness_residual}
+    Assuming the per-round honest-protocol completeness bricks, the full FRI reduction
+    (Definition~\ref{def:fri_reduction}) satisfies perfect completeness. The proof discharges the
+    composition via \texttt{Reduction.seqCompose\_perfectCompleteness\_of\_append} and
+    \texttt{OracleReduction.append\_perfectCompleteness}; no new axioms are introduced in the
+    composition layer.
+\end{theorem}
+
+\subsection{Soundness error accounting}\label{sec:fri_soundness}
+
+The soundness analysis is organized around an explicit per-round error budget. The accounting
+quantities and their monotonicity projections are formalized; binding them into a single
+end-to-end soundness theorem is layered on the sequential-composition soundness infrastructure
+and is the remaining open obligation (issue \#14 for the batched variant).
+
+\begin{definition}[Per-round and total error]\label{def:fri_error}
+\lean{Fri.Spec.roundError,Fri.Spec.queryError,Fri.Spec.totalError}
+\uses{def:proximity_gap}
+    $\mathsf{roundError}_i$ is the BCIKS20 proximity-gap error of folding round $i$;
+    $\mathsf{queryError}$ sums the per-round Schwartz--Zippel query errors $(\degree/N)^\ell$ over
+    the $k+1$ consistency checks; $\mathsf{totalError}$ is the sum of the folding-phase and
+    query-phase contributions.
+\end{definition}
+
+\begin{lemma}[Error projections]\label{lem:fri_error_projections}
+\lean{Fri.Spec.roundError_sum_le_totalError,Fri.Spec.roundError_le_totalError,Fri.Spec.queryError_le_totalError}
+\uses{def:fri_error}
+    The per-round folding errors sum to at most $\mathsf{totalError}$, each individual round error
+    is at most $\mathsf{totalError}$, and the query-phase contribution is at most
+    $\mathsf{totalError}$.
+\end{lemma}
+
+\subsection{Batched FRI}\label{sec:batched_fri}
+
+Batched FRI generalizes FRI to several polynomials by testing a random linear combination, lifting
+to the base protocol via a batching lens; the query soundness is inherited from the base FRI
+analysis once the coset-enumeration bijection is discharged (issue \#14). A dedicated blueprint
+subsection for the batched construction remains to be written.
+</content>

@@ -711,7 +711,7 @@ lemma h1_zs_eq_h2_prime {L : ℕ} (n : ℕ) (τ : ZMod p) (cm : G₁) (S : Finse
     let Zₛ := ∏ s ∈ S.image query, (X - C s)
     let c' : G₁ := commit srs.1 ((CLagrange.interpolate S query response).val.coeff ∘ Fin.val)
     let h₁ := cm / c'
-    let d := fun α => 1 / eval α (divByMonic Zₛ (X - C α))
+    let d := fun α => 1 / eval α (CPolynomial.divByMonic Zₛ (X - C α))
       -- 1/(Z_{S \ {α}}(α))
     let h₂ : G₁ := ∏ i ∈ S, (proofs i) ^ (d (query i)).val
     h₂ = h₁ ^ (1 / Zₛ.eval τ).val := by
@@ -816,7 +816,7 @@ def interpolationArsdhOutput {L : ℕ} (S : Finset (Fin L))
   let c' : G₁ :=
     commit tr.srs.1 ((CLagrange.interpolate S tr.queryOf tr.responseOf).val.coeff ∘ Fin.val)
   let h₁ := tr.cm / c'
-  let d := fun α => 1 / eval α (divByMonic Zₛ (X - C α))
+  let d := fun α => 1 / eval α (CPolynomial.divByMonic Zₛ (X - C α))
     -- 1/(Z_{S \ {α}}(α))
   let h₂ : G₁ := ∏ i ∈ S, (tr.proofs i) ^ (d (tr.queryOf i)).val
   { support := S.image tr.queryOf, base := h₁, solution := h₂ }

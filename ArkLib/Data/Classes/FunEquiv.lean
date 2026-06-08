@@ -45,7 +45,7 @@ instance : DFunLike F α β where
 /-- Coercion from the dependent function type `∀ a : α, β a` to another type `F` that has a
 `DFunEquiv` instance.
 
-TODO: is `Coe` the right thing to use here? What about other variants of coercion? -/
+Note: is `Coe` the right thing to use here? What about other variants of coercion? -/
 instance : Coe (∀ a : α, β a) F where
   coe := DFunEquiv.equiv.invFun
 

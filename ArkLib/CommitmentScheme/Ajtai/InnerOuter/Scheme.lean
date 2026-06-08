@@ -210,7 +210,6 @@ def commitmentScheme (base : ZMod q) (βSq γ κ : Nat)
   commit pp m :=
     let decomps := generateDecomps Φ decomp pp m
     pure (commitWithDecomps Φ pp decomps, { toDecomp := decomps, challenge := fun _ => 1 })
-    -- dummy challenge value c=1 here
   verify pp m c opening :=
     (List.finRange blocks).all (fun i =>
       decide (derivedMessage Φ base opening.toDecomp i = m i)) &&

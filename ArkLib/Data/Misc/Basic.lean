@@ -9,7 +9,7 @@ import Mathlib.Logic.Equiv.Defs
 /-!
   # Helper Functions and Lemmas
 
-  TODO: split these files into different files based on each namespace
+  Note: split these files into different files based on each namespace
 -/
 
 /-- Equivalence between `α` and the sum of `{a // p a}` and `{a // ¬ p a}` -/

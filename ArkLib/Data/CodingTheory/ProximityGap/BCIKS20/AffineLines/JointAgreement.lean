@@ -9,6 +9,16 @@ import ArkLib.Data.CodingTheory.ProximityGap.BCIKS20.Prelude
 import ArkLib.Data.CodingTheory.ProximityGap.BCIKS20.AffineLines.GoodCoeffs
 import ArkLib.Data.CodingTheory.ReedSolomon
 
+/-!
+# BCIKS20 affine lines — joint agreement from a large good-coefficient set
+
+Building on `GoodCoeffs`, this file produces the bivariate Berlekamp-Welch factorization
+`RS_exists_bivariate_AB_of_goodCoeffs_card_gt` from a sufficiently large good-coefficient set,
+and derives joint (correlated) agreement of the two words `u₀, u₁` with the Reed-Solomon code
+in `RS_jointAgreement_of_goodCoeffs_card_gt`. This is the agreement-extraction step of the
+[BCIKS20] correlated-agreement argument over affine lines.
+-/
+
 namespace ProximityGap
 
 open NNReal Finset Function ProbabilityTheory Code

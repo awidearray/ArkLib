@@ -1,11 +1,37 @@
+/-
+Copyright (c) 2026 ArkLib Contributors. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: ArkLib Contributors
+-/
 import Mathlib.LinearAlgebra.Lagrange
+
+/-!
+# Polynomial equality from agreement on enough evaluation points
+
+Identity lemmas for polynomials over a field: two polynomials whose degree is bounded and that
+agree on sufficiently many points are equal.
+
+* `eq_of_eval_eq_degree`: if `p.degree < n`, `q.degree < n`, and `p` and `q` agree on a finite
+  set `s` with `n ≤ s.card`, then `p = q`.
+* `eq_of_eval_eq_natDegree`: the `natDegree` variant of the same statement.
+-/
 
 namespace Polynomial
 
-variable {𝔽 : Type*} [Field 𝔽] 
+variable {𝔽 : Type*} [Field 𝔽]
 
+/--
+Let $p, q \in \mathbb{F}[X]$ be polynomials whose degrees are strictly bounded by $n$.
+If $p$ and $q$ agree on a subset $S \subseteq \mathbb{F}$ with cardinality at least $n$,
+then they are identical.
+
+**Proof intuition**: The difference polynomial $r = p - q$ has degree less than $n$. If
+$r \neq 0$, it can have at most $\deg(r) < n$ roots. However, $r$ vanishes on all elements
+of $S$, which has size at least $n$,
+contradicting the degree bound. Thus, $r = 0$, implying $p = q$.
+-/
 lemma eq_of_eval_eq_degree {p q : 𝔽[X]} {n : ℕ}
-      (hp : p.degree < .some n) (hq : q.degree < .some n) (s : Finset 𝔽) :
+    (hp : p.degree < .some n) (hq : q.degree < .some n) (s : Finset 𝔽) :
     s.card ≥ n → (∀ x ∈ s, p.eval x = q.eval x) → p = q := by
   intros h h'
   by_cases h'' : p = 0 ∧ q = 0
@@ -39,8 +65,13 @@ lemma eq_of_eval_eq_degree {p q : 𝔽[X]} {n : ℕ}
           · rw [Polynomial.degree_eq_natDegree p_eq, this, WithBot.coe_lt_coe] at hp
             simp [hp, hq]
 
+/--
+A variant of `eq_of_eval_eq_degree` using the natural degree `natDegree` instead of `degree`.
+If two polynomials $p, q \in \mathbb{F}[X]$ have natural degree strictly less than $n$,
+and they agree on a subset $S \subseteq \mathbb{F}$ of size at least $n$, then $p = q$.
+-/
 lemma eq_of_eval_eq_natDegree {p q : 𝔽[X]} {n : ℕ}
-      (hp : p.natDegree < n) (hq : q.natDegree < n) (s : Finset 𝔽) :
+    (hp : p.natDegree < n) (hq : q.natDegree < n) (s : Finset 𝔽) :
     s.card ≥ n → (∀ x ∈ s, p.eval x = q.eval x) → p = q := by
     intros hs h_eval; use eq_of_eval_eq_degree (by
     exact lt_of_le_of_lt (Polynomial.degree_le_natDegree) (WithBot.coe_lt_coe.mpr hp)) (by

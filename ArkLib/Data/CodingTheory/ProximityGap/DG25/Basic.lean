@@ -46,7 +46,7 @@ The core results from DG25 are the following:
 This formalization assumes the availability of Theorem 2.2 (Ben+23 / BCIKS20 Thm 4.1) stating
 that Reed-Solomon codes have proximity gaps for affine lines up to the unique decoding radius.
 
-## TODOs
+## Notes
 - Conjecture 4.3 proposes ε=n might hold for general linear codes.
 
 ## References

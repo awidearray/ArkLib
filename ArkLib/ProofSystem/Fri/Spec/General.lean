@@ -8,9 +8,18 @@ Authors: Quang Dao, František Silváši, Julian Sutherland, Ilia Vlasov
 import ArkLib.OracleReduction.Composition.Sequential.General
 import ArkLib.ProofSystem.Fri.Spec.SingleRound
 
+/-!
+# FRI Protocol Specification (General)
+
+The general (multi-round) FRI protocol over a non-binary field, built by sequentially composing
+single folding rounds. Defines the input and output proximity relations (`inputRelation`,
+`outputRelation`), the folding protocol spec (`pSpecFold`), the per-round reduction
+(`reductionFold`), and the full composed `reduction`.
+-/
+
 namespace Fri
 
-open OracleSpec OracleComp ProtocolSpec NNReal
+open OracleSpec OracleComp ProtocolSpec NNReal Domain
 
 namespace Spec
 
@@ -31,7 +40,7 @@ variable {n : ℕ}
 variable (k : ℕ) (s : Fin (k + 1) → ℕ+) (d : ℕ+)
 variable (dom_size_cond : (2 ^ (∑ i, (s i).1)) * d ≤ 2 ^ n)
 variable (l : ℕ)
-variable {ω : ReedSolomon.SmoothCosetFftDomain n F}
+variable {ω : SmoothCosetFftDomain n F}
 
 /- Input/Output relations for the FRI protocol. -/
 def inputRelation [DecidableEq F] (δ : ℝ≥0) :
@@ -82,7 +91,7 @@ instance :
 /- Oracle reduction for all folding rounds of the FRI protocol -/
 @[reducible]
 def reductionFold :
-  OracleReduction []ₒ
+    OracleReduction []ₒ
     (Statement F (0 : Fin (k + 1))) (OracleStatement s ω (0 : Fin (k + 1)))
       (Witness F s d (0 : Fin (k + 2)))
     (FinalStatement F k) (FinalOracleStatement s ω)
@@ -96,7 +105,7 @@ def reductionFold :
 /- Oracle reduction of the FRI protocol. -/
 @[reducible]
 def reduction [DecidableEq F] :
-  OracleReduction []ₒ
+    OracleReduction []ₒ
     (Statement F (0 : Fin (k + 1))) (OracleStatement s ω (0 : Fin (k + 1)))
       (Witness F s d (0 : Fin (k + 2)))
     (FinalStatement F k) (FinalOracleStatement s ω) (Witness F s d (Fin.last (k + 1)))

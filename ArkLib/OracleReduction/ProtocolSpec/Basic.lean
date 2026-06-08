@@ -9,10 +9,22 @@ import ArkLib.OracleReduction.Prelude
 import ArkLib.OracleReduction.OracleInterface
 
 /-!
-# Protocol Specifications for (Oracle) Reductions
+# Interactive and Oracle Protocol Specifications
 
-This file defines the `ProtocolSpec` type, which is used to specify the protocol between the prover
-and the verifier.
+This module formalizes the structural specifications of interactive and interactive oracle proof
+protocols. In a multi-round interactive setting, a protocol specification dictates the communication
+topology
+between a Prover and a Verifier. We represent this via the `ProtocolSpec` structure, which models
+the protocol as a sequence of discrete communication steps (or rounds).
+
+For each step $i \in \{0, \dots, n-1\}$, the specification defines:
+1. The direction of communication (`Direction`), distinguishing between prover-to-verifier messages
+   (`.P_to_V`) and verifier-to-prover challenges (`.V_to_P`).
+2. The message space (`«Type»`), which is the set of all possible messages or challenges
+   transmittable at step $i$.
+
+We define projections and operations on partial and full transcripts of these communication
+protocols, facilitating the formalization of round-by-round and straightline extractors.
 -/
 
 universe u v
@@ -271,7 +283,8 @@ section Instances
 /-- There is only one protocol specification with 0 messages (the empty one) -/
 instance : Unique (ProtocolSpec 0) where
   default := empty
-  uniq := fun ⟨_, _⟩ => by simp; constructor <;> (funext i; exact Fin.elim0 i)
+  uniq := fun ⟨_, _⟩ => by
+    simp only [mk.injEq]; constructor <;> (funext i; exact Fin.elim0 i)
 
 -- Note these strange instance syntheses. This is necessary to avoid diamonds later on when
 -- going to sequential composition.
@@ -403,22 +416,12 @@ def concat' {k : Fin n}
 def concat {k : Fin n} (messages : MessagesUpTo k.castSucc pSpec)
     (h : pSpec.dir k = .P_to_V) (msg : pSpec.Message ⟨k, h⟩) : MessagesUpTo k.succ pSpec :=
   fun ⟨i, h⟩ => (concat' (pSpec := pSpec) (fun i hi => messages ⟨i, hi⟩) (fun _ => msg)) i h
-  -- fun i => if hi : i.1.1 < k then messages ⟨⟨i.1.1, hi⟩, i.property⟩ else
-  --   (by simp [MessageUpTo, Fin.eq_last_of_not_lt hi]; exact msg)
 
 /-- Extend the tuple of messages up to round `k` to up to round `k + 1`, assuming round `k` is a
   challenge round (so no message from the prover is sent). -/
 def extend {k : Fin n} (messages : MessagesUpTo k.castSucc pSpec)
     (h : pSpec.dir k = .V_to_P) : MessagesUpTo k.succ pSpec :=
   fun ⟨i, h⟩ => (concat' (pSpec := pSpec) (fun i hi => messages ⟨i, hi⟩) (fun h' => by aesop)) i h
-  -- fun i => if hi : i.1.1 < k then messages ⟨⟨i.1.1, hi⟩, i.property⟩ else
-  --   -- contradiction proof
-  --   (by
-  --     haveI hik : i.1 = Fin.last k := Fin.eq_last_of_not_lt hi
-  --     haveI := i.property
-  --     simp [hik] at this
-  --     have : pSpec.dir k = .P_to_V := this
-  --     aesop)
 
 instance [inst : ∀ i, DecidableEq (pSpec.Message i)] {k : Fin (n + 1)} :
     DecidableEq (MessagesUpTo k pSpec) :=
@@ -462,20 +465,12 @@ def concat' {k : Fin n}
 def concat {k : Fin n} (challenges : ChallengesUpTo k.castSucc pSpec)
     (h : pSpec.dir k = .V_to_P) (chal : pSpec.Challenge ⟨k, h⟩) : ChallengesUpTo k.succ pSpec :=
   fun ⟨i, h⟩ => (concat' (pSpec := pSpec) (fun i hi => challenges ⟨i, hi⟩) (fun _ => chal)) i h
-  -- fun i => if hi : i.1.1 < k then challenges ⟨⟨i.1.1, hi⟩, i.property⟩ else
-  --   (by simp [Fin.eq_last_of_not_lt hi]; exact chal)
 
 /-- Extend the tuple of challenges up to round `k` to up to round `k + 1`, assuming round `k` is a
   message round (so no challenge from the verifier is sent). -/
 def extend {k : Fin n} (challenges : ChallengesUpTo k.castSucc pSpec)
     (h : pSpec.dir k = .P_to_V) : ChallengesUpTo k.succ pSpec :=
   fun ⟨i, h⟩ => (concat' (pSpec := pSpec) (fun i hi => challenges ⟨i, hi⟩) (fun h' => by aesop)) i h
-  -- fun i => if hi : i.1.1 < k then challenges ⟨⟨i.1.1, hi⟩, i.property⟩ else
-  --   -- contradiction proof
-  --   (by
-  --     haveI := Fin.eq_last_of_not_lt hi
-  --     haveI := i.property
-  --     simp_all [Fin.castLE])
 
 end ChallengesUpTo
 
@@ -501,13 +496,7 @@ instance : Unique (Transcript 0 pSpec) where
   default := fun i => Fin.elim0 i
   uniq := fun T => by ext i; exact Fin.elim0 i
 
--- Potential natural re-indexing of messages and challenges.
--- Not needed for now, but could be useful.
 
--- instance instFinEnumMessageIdx : FinEnum pSpec.MessageIdx :=
---   FinEnum.Subtype.finEnum fun x ↦ pSpec.dir x = Direction.P_to_V
--- instance instFinEnumChallengeIdx : FinEnum pSpec.ChallengeIdx :=
---   FinEnum.Subtype.finEnum fun x ↦ pSpec.dir x = Direction.V_to_P
 
 /-- Concatenate a message to the end of a partial transcript. This is definitionally equivalent to
     `Fin.snoc`. -/
@@ -558,8 +547,15 @@ def equivMessagesChallenges :
       simp [ofMessagesChallenges, toMessagesChallenges, toChallengesUpTo]
       split <;> aesop
 
--- TODO: state theorem that `Transcript.concat` is equivalent to `MessagesUpTo.{concat/extend}` with
--- `ChallengesUpTo.{extend/concat}`, depending on the direction of the round
+@[simp]
+theorem equivMessagesChallenges_fst_apply (transcript : Transcript k pSpec)
+    (i : MessageIdxUpTo k pSpec) :
+    (Transcript.equivMessagesChallenges transcript).1 i = transcript i.val := rfl
+
+@[simp]
+theorem equivMessagesChallenges_snd_apply (transcript : Transcript k pSpec)
+    (i : ChallengeIdxUpTo k pSpec) :
+    (Transcript.equivMessagesChallenges transcript).2 i = transcript i.val := rfl
 
 end Transcript
 
@@ -569,18 +565,26 @@ namespace FullTranscript
 def messages (transcript : FullTranscript pSpec) (i : MessageIdx pSpec) :=
   transcript i.val
 
+@[simp]
+theorem messages_apply (transcript : FullTranscript pSpec) (i : MessageIdx pSpec) :
+    messages transcript i = transcript i.val := rfl
+
 @[reducible, inline, specialize]
 def challenges (transcript : FullTranscript pSpec) (i : ChallengeIdx pSpec) :=
   transcript i.val
 
-/-- There is only one full transcript (the empty one) for an empty protocol -/
+@[simp]
+theorem challenges_apply (transcript : FullTranscript pSpec) (i : ChallengeIdx pSpec) :
+    challenges transcript i = transcript i.val := rfl
+
+/-- Unique instance for the empty full transcript. -/
 instance : Unique (FullTranscript (default : ProtocolSpec 0)) := inferInstance
 
-/-- Convert a full transcript to the tuple of messages and challenges -/
+/-- Convert a full transcript to the tuple of messages and challenges. -/
 def toMessagesChallenges (transcript : FullTranscript pSpec) : Messages pSpec × Challenges pSpec :=
   by exact Transcript.toMessagesChallenges (by exact transcript : Transcript (Fin.last n) pSpec)
 
-/-- Convert the tuple of messages and challenges to a full transcript -/
+/-- Convert the tuple of messages and challenges to a full transcript. -/
 def ofMessagesChallenges (messages : Messages pSpec) (challenges : Challenges pSpec) :
     FullTranscript pSpec :=
   by exact
@@ -588,19 +592,26 @@ def ofMessagesChallenges (messages : Messages pSpec) (challenges : Challenges pS
       (by exact messages : MessagesUpTo (Fin.last n) pSpec)
       (by exact challenges : ChallengesUpTo (Fin.last n) pSpec))
 
-/-- An equivalence between full transcripts and the tuple of messages and challenges. -/
+/-- Equivalence between full transcripts and pairs of message/challenge tuples. -/
 @[simps!]
 def equivMessagesChallenges : FullTranscript pSpec ≃ (Messages pSpec × Challenges pSpec) := by
   change Transcript (Fin.last n) pSpec ≃
     (MessagesUpTo (Fin.last n) pSpec × ChallengesUpTo (Fin.last n) pSpec)
   exact Transcript.equivMessagesChallenges
 
+@[simp]
+theorem equivMessagesChallenges_fst_apply (transcript : FullTranscript pSpec)
+    (i : MessageIdx pSpec) :
+    (FullTranscript.equivMessagesChallenges transcript).1 i = transcript.messages i := rfl
+
+@[simp]
+theorem equivMessagesChallenges_snd_apply (transcript : FullTranscript pSpec)
+    (i : ChallengeIdx pSpec) :
+    (FullTranscript.equivMessagesChallenges transcript).2 i = transcript.challenges i := rfl
+
 end FullTranscript
 
-/-- The specification of whether each message in a protocol specification is available in full
-    (`None`) or received as an oracle (`Some (instOracleInterface (pSpec.Message i))`).
-
-    This is defined as a type class for notational convenience. -/
+/-- Type class identifying oracle-based messages versus full messages. -/
 class OracleInterfaces (pSpec : ProtocolSpec n) where
   oracleInterfaces : ∀ i, Option (OracleInterface (pSpec.Message i))
 
@@ -608,23 +619,23 @@ section OracleInterfaces
 
 variable (pSpec : ProtocolSpec n) [inst : OracleInterfaces pSpec]
 
-/-- Subtype of `pSpec.MessageIdx` for messages that are received as oracles -/
+/-- Subtype of message indices for oracle-received messages. -/
 @[reducible, inline, specialize]
 def OracleMessageIdx := {i : pSpec.MessageIdx // (inst.oracleInterfaces i).isSome }
 
-/-- The oracle interface instances for messages that are received as oracles -/
+/-- Oracle interface for a given message index. -/
 instance {i : OracleMessageIdx pSpec} : OracleInterface (pSpec.Message i) :=
   (inst.oracleInterfaces i).get i.2
 
-/-- Subtype of `pSpec.MessageIdx` for messages that are received in full -/
+/-- Subtype of message indices for full-received messages. -/
 @[reducible, inline, specialize]
 def PlainMessageIdx := {i : pSpec.MessageIdx // (inst.oracleInterfaces i).isNone }
 
-/-- The type of messages that are received in full -/
+/-- Type of full-received messages. -/
 @[reducible, inline, specialize]
 def PlainMessage (i : pSpec.PlainMessageIdx) := pSpec.Message i.1
 
-/-- The type of messages that are received as oracles -/
+/-- Type of oracle-received messages. -/
 @[reducible, inline, specialize]
 def OracleMessage (i : pSpec.OracleMessageIdx) := pSpec.Message i.1
 
@@ -634,18 +645,9 @@ def PlainMessages (pSpec : ProtocolSpec n) [OracleInterfaces pSpec] : Type :=
 def OracleMessages (pSpec : ProtocolSpec n) [OracleInterfaces pSpec] : Type :=
   ∀ i, pSpec.OracleMessage i
 
--- TODO: re-define `OracleReduction` to depend on these oracle interfaces, since currently we
--- assume that _all_ messages are available as oracles in an oracle reduction
-
--- Alternatively, we can define a `HybridReduction` structure, where the oracle interface for each
--- message is optional, that can be specialized to `OracleReduction` and `Reduction`
-
 end OracleInterfaces
 
-/-- Turn each verifier's challenge into an oracle, where querying a unit type gives back the
-    challenge.
-
-  This is the default instance for the challenge oracle interface. It may be overridden by
+/-- This is the default instance for the challenge oracle interface. It may be overridden by
   `challengeOracleInterface{SR/FS}` for state-restoration and/or Fiat-Shamir. -/
 @[reducible, inline, specialize]
 instance challengeOracleInterface {pSpec : ProtocolSpec n} :
@@ -654,7 +656,7 @@ instance challengeOracleInterface {pSpec : ProtocolSpec n} :
     toOC.spec := fun _ => pSpec.Challenge i
     toOC.impl := fun _ => do read }
 
--- dtumad: Longer term I think you want this, but need to change `[_]ₒ` stuff for that
+
 def challengeOracleInterface' {pSpec : ProtocolSpec n} :
     OracleInterface (∀ i, pSpec.Challenge i) where
   Query := pSpec.ChallengeIdx
@@ -709,12 +711,13 @@ the input statement (i.e. we can always transform a given reduction into one whe
 random salt). -/
 @[inline, reducible]
 def srChallengeOracle (Statement : Type) {n : ℕ} (pSpec : ProtocolSpec n) :
-    OracleSpec (((i : pSpec.ChallengeIdx) × (challengeOracleInterfaceSR Statement pSpec i).Query)) :=
+    OracleSpec
+      (((i : pSpec.ChallengeIdx) × (challengeOracleInterfaceSR Statement pSpec i).Query)) :=
   [pSpec.Challenge]ₒ'(challengeOracleInterfaceSR Statement pSpec)
 
 alias fsChallengeOracle := srChallengeOracle
 
--- dtumad: If we keep these they should just move to VCV about `OracleContext`.
+
 /-- Decidable equality for the state-restoration / (slow) Fiat-Shamir oracle -/
 instance {pSpec : ProtocolSpec n} {Statement : Type}
     [DecidableEq Statement]
@@ -766,7 +769,7 @@ def srChallengeQueryImpl {Statement : Type} {pSpec : ProtocolSpec n}
 /-- Alternate version of query implementation that takes in a cached function `f` and returns
   the result and the updated function.
 
-  TODO: upstream this as a more general construction in VCVio -/
+  Note: upstream this as a more general construction in VCVio -/
 @[reducible, inline, specialize, simp]
 def srChallengeQueryImpl' {Statement : Type} {pSpec : ProtocolSpec n}
     [∀ i, SampleableType (pSpec.Challenge i)] :
@@ -826,12 +829,3 @@ alias deriveTranscriptFS := deriveTranscriptSR
 end Messages
 
 end ProtocolSpec
-
--- -- Notation for the type signature of an interactive protocol
--- notation "𝒫——⟦" term "⟧⟶𝒱" => (Direction.P_to_V, term)
--- notation "𝒫⟵⟦" term "⟧——𝒱" => (Direction.V_to_P, term)
-
--- -- Test notation
--- def pSpecNotationTest : ProtocolSpec 2 :=
---   ![ 𝒫——⟦ Polynomial (ZMod 101) ⟧⟶𝒱,
---      𝒫⟵⟦ ZMod 101 ⟧——𝒱]

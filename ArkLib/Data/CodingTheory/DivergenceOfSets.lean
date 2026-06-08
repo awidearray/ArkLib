@@ -14,8 +14,6 @@ import ArkLib.Data.CodingTheory.ReedSolomon
 import ArkLib.Data.Probability.Notation
 import Mathlib.LinearAlgebra.AffineSpace.AffineSubspace.Defs
 
-open NNReal ProximityGap
-
 /-!
   # Definitions and Theorems about Divergence of Sets
 
@@ -24,6 +22,8 @@ open NNReal ProximityGap
   - divergence of sets
   - statement of Corollary 1.3 (Concentration bounds) from [BCIKS20].
 -/
+
+open NNReal ProximityGap
 
 namespace DivergenceOfSets
 

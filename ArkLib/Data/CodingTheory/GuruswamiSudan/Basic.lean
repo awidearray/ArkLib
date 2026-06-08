@@ -46,41 +46,6 @@ noncomputable def gs_johnson (k n m : ℕ) : ℝ :=
   let rho := (k : ℚ) / n
   1 - √ rho - √ rho / (2 * m)
 
-/-- The GS degree bound with m=1 divided by (k-1) is less than F
-    when |F| ≥ 5 and the RS code is non-degenerate (k+1 ≤ n ≤ F). -/
-lemma gs_degree_bound_div_lt {k n F : ℕ} (hk : 2 ≤ k) (hn : n ≤ F) (hF : 5 ≤ F)
-    (hkn : k + 1 ≤ n) :
-    gs_degree_bound k n 1 / (k - 1) < F := by
-  have hk1 : 0 < k - 1 := by omega
-  rw [Nat.div_lt_iff_lt_mul hk1]
-  unfold gs_degree_bound; dsimp only
-  rw [Nat.floor_lt (by positivity)]
-  have harith : 9 * k * n < 4 * (F * (k - 1)) ^ 2 := by
-    rcases Nat.eq_or_lt_of_le hk with rfl | hk3
-    · simp only [show 2 - 1 = 1 from rfl, mul_one]; nlinarith
-    · have : 4 ≤ (k - 1) ^ 2 := le_trans (by norm_num : 4 ≤ 2 ^ 2)
-        (Nat.pow_le_pow_left (by omega) 2)
-      have : k ≤ n := by omega
-      nlinarith [sq_nonneg F, mul_le_mul_of_nonneg_right hn (by omega : 0 ≤ 9 * k)]
-  have hLHS_nn : (0 : ℝ) ≤ (↑(1 : ℕ) + 1 / 2) * √↑(↑k / ↑n : ℚ) * ↑n := by positivity
-  suffices hsq : ((↑(1 : ℕ) + 1 / 2) * √↑(↑k / ↑n : ℚ) * ↑n) ^ 2 <
-      (↑(F * (k - 1)) : ℝ) ^ 2 by
-    nlinarith [sq_abs (↑(F * (k - 1) : ℕ) -
-      ((↑(1 : ℕ) + (1 : ℝ) / 2) * √↑(↑k / ↑n : ℚ) * ↑n))]
-  calc ((↑(1 : ℕ) + 1 / 2) * √↑(↑k / ↑n : ℚ) * ↑n) ^ 2
-      = (↑(1 : ℕ) + 1 / 2) ^ 2 * (√↑(↑k / ↑n : ℚ)) ^ 2 * (↑n) ^ 2 := by ring
-    _ = (↑(1 : ℕ) + 1 / 2) ^ 2 * ↑(↑k / ↑n : ℚ) * (↑n) ^ 2 := by
-        rw [Real.sq_sqrt (by positivity)]
-    _ = 9 / 4 * ((↑k : ℝ) / ↑n) * (↑n : ℝ) ^ 2 := by push_cast; ring
-    _ = 9 / 4 * ↑k * ↑n := by
-        field_simp [show (0 : ℝ) < n from by exact_mod_cast show 0 < n by omega]
-    _ < (↑(F * (k - 1)) : ℝ) ^ 2 := by
-        rw [show (9 : ℝ) / 4 * ↑k * ↑n = 9 * ↑k * ↑n / 4 from by ring]
-        rw [div_lt_iff₀ (by norm_num : (0 : ℝ) < 4)]
-        rw [show (↑(F * (k - 1)) : ℝ) ^ 2 * 4 =
-          4 * (↑F * ↑(k - 1 : ℕ)) ^ 2 from by push_cast; ring]
-        exact_mod_cast harith
-
 namespace GuruswamiSudan
 
 /-- The monomial X^i Y^j as a bivariate polynomial. -/

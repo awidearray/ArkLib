@@ -12,6 +12,18 @@ import Mathlib.RingTheory.Henselian
 import Mathlib.Data.NNReal.Defs
 import Mathlib.Data.NNReal.Basic
 
+/-!
+# Non-square Vandermonde matrices
+
+We define the non-square Vandermonde matrix `Vandermonde.nonsquare ι' α` (entries `(α i) ^ j`)
+and its transpose `nonsquareTranspose`, and prove the submatrix/rank theory: the maximal square
+submatrices are genuine Vandermonde matrices (`subUpFull_of_vandermonde_is_vandermonde`,
+`subLeftFull_of_vandermonde_is_vandermonde`), rank equals the relevant dimension under injectivity
+(`rank_nonsquare_eq_deg_of_deg_le`, `rank_nonsquare_eq_deg_of_ι_le`, `rank_nonsquare_rows_eq_min`),
+and matrix-vector multiplication corresponds to polynomial evaluation
+(`mulVecLin_coeff_vandermondens_eq_eval_matrixOfPolynomials`).
+-/
+
 open Polynomial Matrix Code LinearCode
 
 variable {F ι ι' : Type*}

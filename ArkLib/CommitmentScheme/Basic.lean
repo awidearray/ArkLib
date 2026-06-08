@@ -184,6 +184,46 @@ abbrev ExtractabilityAdversary (oSpec : OracleSpec ι) (Data Commitment AuxState
     [O : OracleInterface Data] :=
   OracleComp oSpec (Commitment × (q : O.Query) × O.Response q × AuxState)
 
+/- The outcome tracked in the extractability experiment: the adversary's claimed response, the
+extractor-induced response, and whether the opening verifier accepted the claim. -/
+abbrev extractabilityCondition :
+    ((query : O.Query) × O.Response query × O.Response query × Bool) → Prop :=
+  fun ⟨_, claimedResponse, extractedResponse, accepted⟩ ↦
+    accepted ∧ extractedResponse ≠ claimedResponse
+
+abbrev extractabilityGame (AuxState : Type)
+    (scheme : Scheme oSpec Data Commitment Decommitment ComKey VerifKey pSpec)
+    (extractor : StraightlineExtractor oSpec Data Commitment)
+    (adversary : ExtractabilityAdversary oSpec Data Commitment AuxState)
+    (prover : Prover oSpec (Commitment × (q : O.Query) × O.Response q) AuxState Bool Unit pSpec) :
+    OptionT ProbComp ((query : O.Query) × O.Response query × O.Response query × Bool) :=
+  let pImpl : QueryImpl (oSpec + [pSpec.Challenge]ₒ) (StateT σ ProbComp) :=
+    QueryImpl.addLift impl (challengeQueryImpl (pSpec := pSpec))
+  OptionT.mk do
+    let s ← init
+    let (ck, vk) ← (simulateQ impl scheme.keygen).run' s
+    (simulateQ pImpl <| (show OracleComp _ _ from do
+      let ⟨⟨cm, query, claimedResponse, proverState⟩, queryLog⟩ ←
+        liftComp (WriterT.run (simulateQ loggingOracle adversary)) _
+      let extractedData := extractor cm queryLog
+      let stmt : Commitment × (q : O.Query) × O.Response q :=
+        (cm, ⟨query, claimedResponse⟩)
+      let reduction := Reduction.mk prover (scheme.opening (ck, vk)).verifier
+      let accepted := (← (reduction.verdict stmt proverState).run).getD false
+      pure (some (⟨query, claimedResponse, O.answer extractedData query, accepted⟩ :
+        (query : O.Query) × O.Response query × O.Response query × Bool))
+    )).run' s
+
+/-- The probability of breaking extractability for a specific extractor/adversary/prover triple. -/
+def extractabilityExperiment (AuxState : Type)
+    (scheme : Scheme oSpec Data Commitment Decommitment ComKey VerifKey pSpec)
+    (extractor : StraightlineExtractor oSpec Data Commitment)
+    (adversary : ExtractabilityAdversary oSpec Data Commitment AuxState)
+    (prover : Prover oSpec (Commitment × (q : O.Query) × O.Response q) AuxState Bool Unit pSpec) :
+    ℝ≥0∞ :=
+  Pr[extractabilityCondition (Data := Data) |
+    extractabilityGame init impl AuxState scheme extractor adversary prover]
+
 set_option linter.unusedVariables false
 
 /-- A commitment scheme satisfies **extractability** with error `extractabilityError` if there
@@ -205,21 +245,9 @@ def extractability (scheme : Scheme oSpec Data Commitment Decommitment ComKey Ve
   ∀ AuxState : Type,
   ∀ adversary : ExtractabilityAdversary oSpec Data Commitment AuxState,
   ∀ prover : Prover oSpec (Commitment × (q : O.Query) × O.Response q) AuxState Bool Unit pSpec,
-    False
-    -- [ fun ⟨b, d, q, r⟩ ↦ b ∧ O.answer d q = r | do
-    --     let result ← liftM (simulate loggingOracle ∅ adversary)
-    --     let ⟨⟨cm, query, response, st⟩, queryLog⟩ := result
-    --     let proof : Proof pSpec oSpec (Commitment × O.Query × O.Response) AuxState :=
-    --       ⟨prover, scheme.opening.verifier⟩
-    --     let ⟨accept, _⟩ ← proof.run ⟨cm, query, response⟩ st
-    --     letI data := extractor cm queryLog
-    --     return (accept, data, query, response)] ≤ extractabilityError
+    extractabilityExperiment init impl AuxState scheme extractor adversary prover ≤ extractabilityError
 
 set_option linter.unusedVariables true
-
--- TODO: version where the query is chosen according to some public coin?
-
--- TODO: multi-instance versions?
 
 /-- An adversary in the function binding game returns a commitment `cm`, and for each index in
   `Fin L`, a query, a claimed response to the query, and an auxiliary private state (to be passed

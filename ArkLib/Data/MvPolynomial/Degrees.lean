@@ -12,7 +12,7 @@ import CompPoly.Data.MvPolynomial.Notation
 /-!
   # Lemmas about degrees of multivariate polynomials
 
-  TODO: write a `poly_degree` tactic that can prove goals involving degrees of univariate or
+  Note: write a `poly_degree` tactic that can prove goals involving degrees of univariate or
   multivariate polynomials
 
   (will need to prove by hand first before knowing how to write the tactic)
@@ -133,14 +133,14 @@ end Degrees
 
 section DegreeOf
 
--- TODO we can prove equality here if R is a domain
+-- NOTE we can prove equality here if R is a domain
 -- theorem degreeOf_mul_eq' [IsDomain R] (i : σ) (f g : MvPolynomial σ R) :
 --     degreeOf i (f * g) = degreeOf i f + degreeOf i g := by
 --   classical
 --   repeat' rw [degreeOf]
 --   simp [degreeOf]
 
--- TODO in the following we have equality iff f ≠ 0
+-- NOTE in the following we have equality iff f ≠ 0
 -- theorem degreeOf_mul_X_eq' (j : σ) (f : MvPolynomial σ R) (h : f ≠ 0) :
 --     degreeOf j (f * X j) = degreeOf j f + 1 := by
 --   classical
@@ -156,12 +156,6 @@ theorem degreeOf_X_le (i j : σ) : degreeOf i (X (R := R) j) ≤ 1 := by
   simp only [degreeOf]
   apply le_trans (Multiset.count_le_card _ _) _
   exact Multiset.card_le_card (degrees_X' (R := R) j)
-
-theorem degreeOf_X_of_ne (i j : σ) (h : i ≠ j) : degreeOf i (X (R := R) j) = 0 := by
-  classical
-  rw [degreeOf]
-  apply Nat.eq_zero_of_le_zero
-  exact le_trans (Multiset.count_le_of_le i (degrees_X' (R := R) j)) (by simp [h])
 
 theorem degreeOf_linear_le {a b : R} : degreeOf n (C a + C b * p) ≤ degreeOf n p := by
   apply le_trans (degreeOf_add_le _ _ _) _

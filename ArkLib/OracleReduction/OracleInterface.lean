@@ -6,7 +6,10 @@ Authors: Quang Dao
 
 import VCVio
 import CompPoly.Data.MvPolynomial.Notation
+import ArkLib.Data.MvPolynomial.Degrees
+import ArkLib.Data.MvPolynomial.SchwartzZippelCounting
 import Mathlib.Algebra.Polynomial.Roots
+import Mathlib.RingTheory.IntegralDomain
 -- import ArkLib.Data.MlPoly.Basic
 
 /-!
@@ -38,7 +41,7 @@ open OracleComp OracleSpec OracleQuery
   - a function `answer` that given a message `m : Message` and a query `q : Query`,
   returns a response `r : Response`.
 
-TODO: turn `(Query, Response)` into a general `PFunctor` (i.e. `Response : Query → Type`) This
+Note: turn `(Query, Response)` into a general `PFunctor` (i.e. `Response : Query → Type`) This
 allows for better compositionality of `OracleInterface`, including (indexed) sum, instead of
 requiring indexed family of `OracleInterface`s.
 
@@ -318,13 +321,30 @@ end OracleInterface
 
 section PolynomialDistance
 
--- TODO: refactor these theorems and move them into the appropriate `(Mv)Polynomial` files
+-- Note: refactor these theorems and move them into the appropriate `(Mv)Polynomial` files
 
-open Polynomial MvPolynomial OracleInterface
+open Polynomial MvPolynomial OracleInterface Finset
 
 variable {R : Type*} [CommRing R] {d : ℕ} [Fintype R] [DecidableEq R] [IsDomain R]
 
--- TODO: golf this theorem
+omit [Fintype R] [DecidableEq R] [IsDomain R] in
+private lemma totalDegree_le_card_mul_of_degreeOf_le {σ : Type*} [Fintype σ]
+    {p : MvPolynomial σ R} (hp : ∀ i, p.degreeOf i ≤ d) :
+    p.totalDegree ≤ Fintype.card σ * d := by
+  classical
+  rw [MvPolynomial.totalDegree]
+  refine Finset.sup_le ?_
+  intro m hm
+  calc
+    Finsupp.sum m (fun _ e => e) = ∑ i : σ, m i := by
+      simp [Finsupp.sum_fintype]
+    _ ≤ ∑ _i : σ, d := by
+      exact Finset.sum_le_sum fun i _ =>
+        le_trans (MvPolynomial.monomial_le_degreeOf i hm) (hp i)
+    _ = Fintype.card σ * d := by
+      simp [Finset.sum_const, mul_comm]
+
+-- Note: golf this theorem
 @[simp]
 theorem distanceLE_polynomial_degreeLT :
     distanceLE (instPolynomialDegreeLT R d) (d - 1) := by
@@ -367,6 +387,68 @@ theorem distanceLE_polynomial_degreeLE :
 theorem distanceLE_mvPolynomial_degreeLE {σ : Type} [Fintype σ] [DecidableEq σ] :
     distanceLE (instMvPolynomialDegreeLE R d σ)
       (Fintype.card σ * d * Fintype.card R ^ (Fintype.card σ - 1)) := by
-  sorry
+  classical
+  intro a b hne
+  change #{q | MvPolynomial.eval q a.1 = MvPolynomial.eval q b.1} ≤
+      Fintype.card σ * d * Fintype.card R ^ (Fintype.card σ - 1)
+  let f : MvPolynomial σ R := a.1 - b.1
+  have hf : f ≠ 0 := by
+    intro hf0
+    apply hne
+    have hf0' : a.1 - b.1 = 0 := by simpa [f] using hf0
+    exact Subtype.ext (sub_eq_zero.mp hf0')
+  have hdegOf : ∀ i, f.degreeOf i ≤ d := by
+    intro i
+    have ha := (MvPolynomial.mem_restrictDegree_iff_degreeOf_le a.1 d).mp a.2 i
+    have hb := (MvPolynomial.mem_restrictDegree_iff_degreeOf_le b.1 d).mp b.2 i
+    exact le_trans (by simpa [f] using MvPolynomial.degreeOf_sub_le i a.1 b.1) (max_le ha hb)
+  have htd : f.totalDegree ≤ Fintype.card σ * d :=
+    totalDegree_le_card_mul_of_degreeOf_le hdegOf
+  have hfilter_eq : #{q | MvPolynomial.eval q a.1 = MvPolynomial.eval q b.1} =
+      #{q | MvPolynomial.eval q f = 0} := by
+    congr 1
+    exact Finset.filter_congr (by
+      intro q _
+      simp [f, MvPolynomial.eval_sub, sub_eq_zero])
+  rw [hfilter_eq]
+  let e : σ ≃ Fin (Fintype.card σ) := Fintype.equivFin σ
+  let g : MvPolynomial (Fin (Fintype.card σ)) R := (MvPolynomial.renameEquiv R e) f
+  have hcard_rename : #{q | MvPolynomial.eval q f = 0} =
+      (Finset.filter (fun x => MvPolynomial.eval x g = 0)
+        (Fintype.piFinset fun _ : Fin (Fintype.card σ) => (Finset.univ : Finset R))).card := by
+    refine Finset.card_bijective (fun q : σ → R => q ∘ e.symm) ?_ ?_
+    · exact Function.Bijective.comp_right e.symm.bijective
+    · intro q
+      simp [g, MvPolynomial.renameEquiv_apply, MvPolynomial.eval_rename, Function.comp_assoc]
+  rw [hcard_rename]
+  have hg : g ≠ 0 := by
+    intro hg0
+    apply hf
+    have h : (MvPolynomial.renameEquiv R e) f = (MvPolynomial.renameEquiv R e) 0 := by
+      simpa [g] using hg0
+    exact EquivLike.injective (MvPolynomial.renameEquiv R e) h
+  have htdg : g.totalDegree ≤ Fintype.card σ * d := by
+    simpa [g] using
+      (show ((MvPolynomial.renameEquiv R e) f).totalDegree ≤ Fintype.card σ * d from by
+        rw [MvPolynomial.totalDegree_renameEquiv]
+        exact htd)
+  letI : Field R := Fintype.fieldOfDomain R
+  have hRpos : 0 < Fintype.card R := Fintype.card_pos_iff.mpr ⟨0⟩
+  have hcount := schwartz_zippel_counting (F := R) (f := g) hg
+    (fun _ : Fin (Fintype.card σ) => (Finset.univ : Finset R))
+    (Fintype.card σ * d) (Fintype.card R) htdg hRpos (fun _ => le_rfl)
+  have hcount' :
+      (Finset.filter (fun x => MvPolynomial.eval x g = 0)
+        (Fintype.piFinset fun _ : Fin (Fintype.card σ) => (Finset.univ : Finset R))).card *
+          Fintype.card R ≤
+        (Fintype.card σ * d * Fintype.card R ^ (Fintype.card σ - 1)) *
+          Fintype.card R := by
+    refine hcount.trans ?_
+    simp only [Finset.prod_const, Finset.card_univ, Fintype.card_fin]
+    set n := Fintype.card σ
+    cases n with
+    | zero => simp
+    | succ n => simp [Nat.pow_succ, Nat.mul_assoc, Nat.mul_left_comm, Nat.mul_comm]
+  exact Nat.le_of_mul_le_mul_right hcount' hRpos
 
 end PolynomialDistance

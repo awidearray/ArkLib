@@ -15,6 +15,18 @@ import ArkLib.Data.CodingTheory.ReedSolomon
 import ArkLib.Data.Polynomial.Trivariate
 import ArkLib.Data.CodingTheory.Basic.DecodingRadius
 
+/-!
+# BCIKS20 §6 — from affine lines to affine/linear subspaces
+
+This file lifts the affine-line correlated-agreement results to higher-dimensional affine and
+linear subspaces. It records the probabilistic averaging tools (`exists_of_weighted_avg_gt`,
+`prob_uniform_congr_equiv`, `prob_uniform_shift_invariant`), the basepoint-selection lemmas
+(`exists_basepoint_with_large_line_prob_aux`, `exists_basepoint_with_large_line_prob`), and the
+joint-agreement-to-proximity steps (`jointAgreement_implies_second_proximity`,
+`jointAgreement_implies_linSpan_proximity`), culminating in
+`average_proximity_implies_proximity_of_linear_subspace`.
+-/
+
 namespace ProximityGap
 
 open NNReal Finset Function ProbabilityTheory ReedSolomon Code
@@ -304,6 +316,10 @@ theorem exists_basepoint_with_large_line_prob {ι : Type} [Fintype ι] [Nonempty
 omit [NeZero l] in
 theorem average_proximity_implies_proximity_of_linear_subspace
     {u : Fin (l + 2) → ι → F} {k : ℕ} {domain : ι ↪ F} {δ : ℝ≥0}
+    -- [BCIKS20] §5: strict Johnson-branch coefficient-polynomial extraction residual,
+    -- specialized to the `k = 1` affine line at degree `k + 1`.
+    (hStrictCoeff :
+      ProximityGap.StrictCoeffPolysResidual (k := 1) (deg := k + 1) (domain := domain) (δ := δ))
     (hδ : δ ∈ Set.Ioo 0 (1 - ReedSolomon.sqrtRate (k + 1) domain)) :
     letI U'_submodule : Submodule F (ι → F) :=
       Submodule.span F (Finset.univ.image (Fin.tail u) : Set (ι → F))
@@ -327,8 +343,6 @@ theorem average_proximity_implies_proximity_of_linear_subspace
       u' ∈ (Submodule.span F (Finset.univ.image (Fin.tail u) : Set (ι → F)) :
         Submodule F (ι → F)) := by
     simpa [Set.mem_toFinset] using hu'
-  have hδ_le : δ ≤ 1 - ReedSolomon.sqrtRate (k + 1) domain :=
-    le_of_lt hδ.2
   rcases
       (exists_basepoint_with_large_line_prob
         (ι := ι) (F := F)
@@ -344,8 +358,8 @@ theorem average_proximity_implies_proximity_of_linear_subspace
       δ_ε_correlatedAgreementAffineLines (A := F) (F := F) (ι := ι)
         (C := ReedSolomon.code domain (k + 1)) (δ := δ)
         (ε := ProximityGap.errorBound δ (k + 1) domain) :=
-    RS_correlatedAgreement_affineLines (ι := ι) (F := F) (deg := k + 1) (domain := domain)
-      (δ := δ) hδ_le
+    RS_correlatedAgreement_affineLines_strict (ι := ι) (F := F) (deg := k + 1) (domain := domain)
+      (δ := δ) hStrictCoeff hδ.2
   have hJA :
       jointAgreement (C := ReedSolomon.code domain (k + 1)) (δ := δ)
         (W := Code.finMapTwoWords a.1 u') := by
@@ -661,8 +675,12 @@ Proof strategy:
 4. Apply Lemma 6.3 to span(U) → all elements of span(U) are close.
    Since U ⊆ span(U), all elements of U are close. -/
 theorem all_affine_elements_close {k : ℕ} [NeZero k]
-    (u : Fin (k + 1) → ι → F) {deg : ℕ} {domain : ι ↪ F} {δ : ℝ≥0}
-    (hδ : δ ≤ 1 - ReedSolomon.sqrtRate deg domain)
+    (u : Fin (k + 1) → ι → F) {deg : ℕ} [NeZero deg] {domain : ι ↪ F} {δ : ℝ≥0}
+    -- [BCIKS20] §5: strict Johnson-branch coefficient-polynomial extraction residual,
+    -- specialized to the `k = 1` affine line.
+    (hStrictCoeff :
+      ProximityGap.StrictCoeffPolysResidual (k := 1) (deg := deg) (domain := domain) (δ := δ))
+    (hδ : δ < 1 - ReedSolomon.sqrtRate deg domain)
     (hPr : Pr_{
       let y ← $ᵖ (Affine.affineSubspaceAtOrigin (F := F) (u 0) (Fin.tail u))}[δᵣ(↑y,
         (ReedSolomon.code domain deg : Set (ι → F))) ≤ δ] >
@@ -693,7 +711,7 @@ theorem all_affine_elements_close {k : ℕ} [NeZero k]
       hPr_fin with ⟨a, hline⟩
     have hJA : Code.jointAgreement (C := (V : Set (ι → F))) (δ := δ)
         (W := Code.finMapTwoWords a.1 dir) := by
-      apply RS_correlatedAgreement_affineLines hδ
+      apply RS_correlatedAgreement_affineLines_strict hStrictCoeff hδ
       simpa [Code.finMapTwoWords] using hline
     exact jointAgreement_implies_second_proximity
       (ι := ι) (F := F) (C := (V : Set (ι → F)))
@@ -897,7 +915,7 @@ theorem all_affine_elements_close {k : ℕ} [NeZero k]
       (ε := ProximityGap.errorBound δ deg domain) hPr_span with ⟨a, hline⟩
     have hJA : Code.jointAgreement (C := (V : Set (ι → F))) (δ := δ)
         (W := Code.finMapTwoWords a.1 x) := by
-      apply RS_correlatedAgreement_affineLines hδ
+      apply RS_correlatedAgreement_affineLines_strict hStrictCoeff hδ
       simpa [Code.finMapTwoWords] using hline
     exact jointAgreement_implies_second_proximity
       (ι := ι) (F := F) (C := (V : Set (ι → F)))
@@ -1451,6 +1469,8 @@ private lemma gs_degree_bound_le_inv_mu
     _ ≤ 1 / μ + 1 / (4 * μ) := add_le_add h5 h6
     _ = 5 / (4 * μ) := by ring
 
+set_option maxHeartbeats 800000 in
+-- The low-degree branch performs several real/NNReal casts and arithmetic normalizations.
 omit [DecidableEq ι] [DecidableEq F] in
 /-- Construct a GS multiplicity `m` satisfying both the Johnson radius bound and the degree
 bound. Witness: `m = ⌈√ρ/(2η)⌉ + 1` where `η = 1 - √ρ - δ`. -/
@@ -1727,9 +1747,19 @@ theorem rs_listDecoding_card_lt_field {deg : ℕ} {domain : ι ↪ F} {δ : ℝ�
     -- For deg = 0: degreeLT F 0 = ⊥, so code = {0}, closeWords ⊆ {0}.
     push Not at hdeg
     interval_cases deg
-    · -- deg = 0: code α 0 = ⊥, so closeWords ⊆ {0}, card ≤ 1 < |F|.
-      have hcode_triv : ∀ v ∈ closeWords, v = 0 := fun v hv => by
-        simpa [ReedSolomon.code_zero] using (hclose v hv).1
+    · -- deg = 0: code = {0}, so closeWords ⊆ {0}, card ≤ 1 < |F|
+      have hcode_triv : ∀ v ∈ closeWords, v = 0 := by
+        intro v hv
+        have hvc := (hclose v hv).1
+        rw [ReedSolomon.code] at hvc
+        obtain ⟨p, hp, he⟩ := Submodule.mem_map.mp hvc
+        have hp0 : p = 0 := by
+          rw [Polynomial.mem_degreeLT] at hp
+          cases h : p.degree with
+          | bot => exact Polynomial.degree_eq_bot.mp h
+          | coe n => simp [h] at hp
+        simp [hp0, ReedSolomon.evalOnPoints] at he
+        exact he.symm
       have : closeWords.card ≤ 1 :=
         Finset.card_le_one_iff.mpr (fun hx hy => (hcode_triv _ hx).trans (hcode_triv _ hy).symm)
       linarith [Fintype.one_lt_card_iff_nontrivial.mpr (Field.toNontrivial : Nontrivial F)]
@@ -2097,6 +2127,13 @@ theorem correlatedAgreement_affine_spaces {k : ℕ} [NeZero k]
     {deg : ℕ} {domain : ι ↪ F} {δ : ℝ≥0}
     (hdeg : 0 < deg)
     (_hδ_pos : 0 < δ)
+    -- [BCIKS20] §5: strict Johnson-branch coefficient-polynomial extraction residual,
+    -- specialized to the `k = 1` affine line. The affine-space proof passes through both the
+    -- input radius `δ` (for `all_affine_elements_close`) and the internally derived minimal
+    -- radius `δ_star = divergence U V ≤ δ` (for the per-direction line applications), so the
+    -- residual is quantified over every radius `δ' ≤ δ`.
+    (hStrictCoeff : ∀ δ' : ℝ≥0, δ' ≤ δ →
+      ProximityGap.StrictCoeffPolysResidual (k := 1) (deg := deg) (domain := domain) (δ := δ'))
     (hδ : δ < 1 - ReedSolomon.sqrtRate deg domain)
     (hRS : deg + 1 ≤ Fintype.card ι)
     (_hε : errorBound δ deg domain < 1) :
@@ -2104,6 +2141,7 @@ theorem correlatedAgreement_affine_spaces {k : ℕ} [NeZero k]
       (C := ReedSolomon.code domain deg) (δ := δ) (ε := errorBound δ deg domain) := by
   intro u hPr
   classical
+  letI : NeZero deg := ⟨by omega⟩
   -- BCIKS20 §6.3 (p31). Proof structure follows the paper exactly.
   -- Overview:
   -- 1. All elements of U are δ-close to V (Lemma 6.3 + extension to span(U)).
@@ -2120,7 +2158,7 @@ theorem correlatedAgreement_affine_spaces {k : ℕ} [NeZero k]
       δᵣ(↑y, (V : Set (ι → F))) ≤ δ] > errorBound δ deg domain := by
     convert hPr using 1
   have h_all_close : ∀ x ∈ U, δᵣ(x, (V : Set (ι → F))) ≤ δ :=
-    all_affine_elements_close u (le_of_lt hδ) hPr_sub
+    all_affine_elements_close u (hStrictCoeff δ le_rfl) hδ hPr_sub
   have hu0_mem : u 0 ∈ U := by
     change u 0 ∈ Affine.affineSubspaceAtOrigin (F := F) (u 0) (Fin.tail u)
     rw [Affine.mem_affineSubspaceFrom_iff]; exact ⟨0, by simp⟩
@@ -2209,15 +2247,19 @@ theorem correlatedAgreement_affine_spaces {k : ℕ} [NeZero k]
   -- ═══════════════════════════════════════════════════════════
   -- Step 4: Apply Thm 1.4 with u* and δ_star.
   -- ═══════════════════════════════════════════════════════════
+  letI : NeZero deg := ⟨by omega⟩
   have hε_star : errorBound δ_star deg domain < 1 :=
     lt_of_le_of_lt (DivergenceOfSets.errorBound_mono hdeg hδ_star_le hδ) _hε
   have hεδ_star_lt_one : (errorBound δ_star deg domain : ENNReal) < 1 := by
     exact_mod_cast hε_star
+  have hδ_star_strict : δ_star < 1 - ReedSolomon.sqrtRate deg domain :=
+    lt_of_le_of_lt hδ_star_le hδ
   have h_pair_ja : ∀ j : Fin k,
       jointAgreement (C := (V : Set (ι → F))) (δ := δ_star)
         (W := finMapTwoWords u_star (Fin.tail u j)) := by
     intro j
-    apply RS_correlatedAgreement_affineLines hδ_star_le_sqrt
+    apply RS_correlatedAgreement_affineLines_strict (hStrictCoeff δ_star hδ_star_le)
+      hδ_star_strict
     rw [h_line_pr1_star _ (h_dir_in_U_star j)]
     exact hεδ_star_lt_one
   choose S_j hS_j v_pair hv_pair using fun j => h_pair_ja j
@@ -2228,11 +2270,10 @@ theorem correlatedAgreement_affine_spaces {k : ℕ} [NeZero k]
         (W := finMapTwoWords u_star (x - u_star)) := by
     intro x hx
     have hx_U := (hU_star_eq ▸ hx : x ∈ U)
-    apply RS_correlatedAgreement_affineLines hδ_star_le_sqrt
+    apply RS_correlatedAgreement_affineLines_strict (hStrictCoeff δ_star hδ_star_le)
+      hδ_star_strict
     rw [h_line_pr1_star _ (fun z => h_line_in_U_star x hx_U z)]
     exact hεδ_star_lt_one
-  have hδ_star_strict : δ_star < 1 - ReedSolomon.sqrtRate deg domain :=
-    lt_of_le_of_lt hδ_star_le hδ
   have h_bucket := bucket_exists_common_codeword V u_star (Fin.tail u) h_elem_ja h_pair_ja
     (fun w close hclose => by
       by_cases hδs_pos : (0 : ℝ≥0) < δ_star
@@ -2319,8 +2360,139 @@ theorem correlatedAgreement_affine_spaces {k : ℕ} [NeZero k]
     rw [show i = Fin.succ j from (Fin.succ_pred i hi).symm]
     exact this
 
+/-- Theorem 1.7 front door with the affine-line Johnson residual supplied by the verified
+`betaRec` capsule at every radius `δ' ≤ δ` used internally by the affine-space proof. -/
+theorem correlatedAgreement_affine_spaces_johnson_of_betaRec {k : ℕ} [NeZero k]
+    {deg : ℕ} {domain : ι ↪ F} {δ : ℝ≥0}
+    (hdeg : 0 < deg)
+    (hδ_pos : 0 < δ)
+    (hInput : ∀ δ' : ℝ≥0, δ' ≤ δ →
+      ∀ (_hk : 0 < 1) (u : WordStack F (Fin 2) ι),
+        Pr_{
+          let z ← $ᵖ F}[δᵣ(∑ t : Fin 2, (z ^ (t : ℕ)) • u t,
+            ReedSolomon.code domain deg) ≤ δ'] >
+            (((1 : ℕ) : ENNReal) * (errorBound δ' deg domain : ENNReal)) →
+        (1 - (LinearCode.rate (ReedSolomon.code domain deg) : ℝ≥0)) / 2 < δ' →
+        δ' < 1 - ReedSolomon.sqrtRate deg domain →
+        ArkLib.KeystoneStrictResidual.BetaCurveInput
+          (k := 1) (deg := deg) (domain := domain) (δ := δ') u)
+    (hδ : δ < 1 - ReedSolomon.sqrtRate deg domain)
+    (hRS : deg + 1 ≤ Fintype.card ι)
+    (hε : errorBound δ deg domain < 1) :
+    δ_ε_correlatedAgreementAffineSpaces (k := k) (A := F) (F := F) (ι := ι)
+      (C := ReedSolomon.code domain deg) (δ := δ) (ε := errorBound δ deg domain) :=
+  correlatedAgreement_affine_spaces (ι := ι) (F := F) (k := k) (deg := deg)
+    (domain := domain) (δ := δ) hdeg hδ_pos
+    (fun δ' hδ'_le =>
+      ArkLib.KeystoneStrictResidual.strictCoeffPolysResidual_of_betaRec
+        (k := 1) (deg := deg) (domain := domain) (δ := δ') (hInput δ' hδ'_le))
+    hδ hRS hε
+
+/-- Theorem 1.7 front door with the strict Johnson residual split at the boundary.
+
+The affine-space proof needs the line-level strict coefficient residual for every
+`δ' ≤ δ`: strict subradii come from the verified `betaRec` capsule, while the
+exact boundary radius is kept as the single explicit residual.  This avoids
+asking callers to produce the strict-interior `betaRec` input at the endpoint
+where boundary-card/lattice phenomena are handled separately. -/
+theorem correlatedAgreement_affine_spaces_johnson_of_betaRec_strict_boundary
+    {k : ℕ} [NeZero k] {deg : ℕ} {domain : ι ↪ F} {δ : ℝ≥0}
+    (hdeg : 0 < deg)
+    (hδ_pos : 0 < δ)
+    (hInputStrict : ∀ δ' : ℝ≥0, δ' < δ →
+      ∀ (_hk : 0 < 1) (u : WordStack F (Fin 2) ι),
+        Pr_{
+          let z ← $ᵖ F}[δᵣ(∑ t : Fin 2, (z ^ (t : ℕ)) • u t,
+            ReedSolomon.code domain deg) ≤ δ'] >
+            (((1 : ℕ) : ENNReal) * (errorBound δ' deg domain : ENNReal)) →
+        (1 - (LinearCode.rate (ReedSolomon.code domain deg) : ℝ≥0)) / 2 < δ' →
+        δ' < 1 - ReedSolomon.sqrtRate deg domain →
+        ArkLib.KeystoneStrictResidual.BetaCurveInput
+          (k := 1) (deg := deg) (domain := domain) (δ := δ') u)
+    (hBoundaryStrict :
+      ProximityGap.StrictCoeffPolysResidual (k := 1) (deg := deg)
+        (domain := domain) (δ := δ))
+    (hδ : δ < 1 - ReedSolomon.sqrtRate deg domain)
+    (hRS : deg + 1 ≤ Fintype.card ι)
+    (hε : errorBound δ deg domain < 1) :
+    δ_ε_correlatedAgreementAffineSpaces (k := k) (A := F) (F := F) (ι := ι)
+      (C := ReedSolomon.code domain deg) (δ := δ) (ε := errorBound δ deg domain) :=
+  correlatedAgreement_affine_spaces (ι := ι) (F := F) (k := k) (deg := deg)
+    (domain := domain) (δ := δ) hdeg hδ_pos
+    (fun δ' hδ'_le => by
+      by_cases hδ'_eq : δ' = δ
+      · simpa [hδ'_eq] using hBoundaryStrict
+      · exact ArkLib.KeystoneStrictResidual.strictCoeffPolysResidual_of_betaRec
+          (k := 1) (deg := deg) (domain := domain) (δ := δ')
+          (hInputStrict δ' (lt_of_le_of_ne hδ'_le hδ'_eq)))
+    hδ hRS hε
+
+/-- Theorem 1.7 front door with the affine-line Johnson residual supplied by the finite-range
+verified `betaRec` capsule at every radius `δ' ≤ δ` used internally by the affine-space proof. -/
+theorem correlatedAgreement_affine_spaces_johnson_of_betaRecFin {k : ℕ} [NeZero k]
+    {deg : ℕ} {domain : ι ↪ F} {δ : ℝ≥0}
+    (hdeg : 0 < deg)
+    (hδ_pos : 0 < δ)
+    (hInput : ∀ δ' : ℝ≥0, δ' ≤ δ →
+      ∀ (_hk : 0 < 1) (u : WordStack F (Fin 2) ι),
+        Pr_{
+          let z ← $ᵖ F}[δᵣ(∑ t : Fin 2, (z ^ (t : ℕ)) • u t,
+            ReedSolomon.code domain deg) ≤ δ'] >
+            (((1 : ℕ) : ENNReal) * (errorBound δ' deg domain : ENNReal)) →
+        (1 - (LinearCode.rate (ReedSolomon.code domain deg) : ℝ≥0)) / 2 < δ' →
+        δ' < 1 - ReedSolomon.sqrtRate deg domain →
+        ArkLib.KeystoneStrictResidual.BetaCurveInputFin
+          (k := 1) (deg := deg) (domain := domain) (δ := δ') u)
+    (hδ : δ < 1 - ReedSolomon.sqrtRate deg domain)
+    (hRS : deg + 1 ≤ Fintype.card ι)
+    (hε : errorBound δ deg domain < 1) :
+    δ_ε_correlatedAgreementAffineSpaces (k := k) (A := F) (F := F) (ι := ι)
+      (C := ReedSolomon.code domain deg) (δ := δ) (ε := errorBound δ deg domain) :=
+  correlatedAgreement_affine_spaces (ι := ι) (F := F) (k := k) (deg := deg)
+    (domain := domain) (δ := δ) hdeg hδ_pos
+    (fun δ' hδ'_le =>
+      ArkLib.KeystoneStrictResidual.strictCoeffPolysResidual_of_betaRecFin
+        (k := 1) (deg := deg) (domain := domain) (δ := δ') (hInput δ' hδ'_le))
+    hδ hRS hε
+
+/-- Theorem 1.7 front door with the finite-range strict Johnson residual split at the boundary.
+
+Strict subradii come from the verified `BetaCurveInputFin` capsule; the exact boundary radius stays
+as the single explicit strict-coefficient residual. -/
+theorem correlatedAgreement_affine_spaces_johnson_of_betaRecFin_strict_boundary
+    {k : ℕ} [NeZero k] {deg : ℕ} {domain : ι ↪ F} {δ : ℝ≥0}
+    (hdeg : 0 < deg)
+    (hδ_pos : 0 < δ)
+    (hInputStrict : ∀ δ' : ℝ≥0, δ' < δ →
+      ∀ (_hk : 0 < 1) (u : WordStack F (Fin 2) ι),
+        Pr_{
+          let z ← $ᵖ F}[δᵣ(∑ t : Fin 2, (z ^ (t : ℕ)) • u t,
+            ReedSolomon.code domain deg) ≤ δ'] >
+            (((1 : ℕ) : ENNReal) * (errorBound δ' deg domain : ENNReal)) →
+        (1 - (LinearCode.rate (ReedSolomon.code domain deg) : ℝ≥0)) / 2 < δ' →
+        δ' < 1 - ReedSolomon.sqrtRate deg domain →
+        ArkLib.KeystoneStrictResidual.BetaCurveInputFin
+          (k := 1) (deg := deg) (domain := domain) (δ := δ') u)
+    (hBoundaryStrict :
+      ProximityGap.StrictCoeffPolysResidual (k := 1) (deg := deg)
+        (domain := domain) (δ := δ))
+    (hδ : δ < 1 - ReedSolomon.sqrtRate deg domain)
+    (hRS : deg + 1 ≤ Fintype.card ι)
+    (hε : errorBound δ deg domain < 1) :
+    δ_ε_correlatedAgreementAffineSpaces (k := k) (A := F) (F := F) (ι := ι)
+      (C := ReedSolomon.code domain deg) (δ := δ) (ε := errorBound δ deg domain) :=
+  correlatedAgreement_affine_spaces (ι := ι) (F := F) (k := k) (deg := deg)
+    (domain := domain) (δ := δ) hdeg hδ_pos
+    (fun δ' hδ'_le => by
+      by_cases hδ'_eq : δ' = δ
+      · simpa [hδ'_eq] using hBoundaryStrict
+      · exact ArkLib.KeystoneStrictResidual.strictCoeffPolysResidual_of_betaRecFin
+          (k := 1) (deg := deg) (domain := domain) (δ := δ')
+          (hInputStrict δ' (lt_of_le_of_ne hδ'_le hδ'_eq)))
+    hδ hRS hε
+
 end CoreResults
 
 end ProximityGap
 
-set_option linter.style.longFile 2400
+set_option linter.style.longFile 2500

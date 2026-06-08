@@ -23,7 +23,7 @@ each coefficient is placed in the `bᵉ`-slot of its block. This is captured abs
 `DigitDecomposition` (a per-coefficient digit map satisfying the base-`b` reconstruction
 law) and realized concretely over `ZMod q` by `zmodDigitDecomposition`. The associated
 `gadgetDecompose` is then lawful (`gadgetDecompose_lawful`), replacing the earlier
-units-place placeholder.
+units-place sketch with the actual digit-decomposition API.
 
 ## References
 
@@ -282,8 +282,9 @@ theorem gadgetDecompose_lawful {rows digits : Nat} (hd : 0 < digits) (h1 : 1 ≤
     simp only [Rq.coeffHom_apply]
   have hterm : ∀ e : Fin digits,
       (constRq Φ (base ^ (e : ℕ)) * Rq.ofFinCoeff Φ Φ.φ.natDegree
-          (fun k' => dd.digit ((x i).1.coeff k') e)).1.coeff k
-        = base ^ (e : ℕ) * (if k < Φ.φ.natDegree then dd.digit ((x i).1.coeff k) e else 0) := by
+        (fun k' => dd.digit ((x i).1.coeff k') e)).1.coeff k
+        = base ^ (e : ℕ) *
+          (if k < Φ.φ.natDegree then dd.digit ((x i).1.coeff k) e else 0) := by
     intro e
     rw [constRq_mul_coeff Φ h1, Rq.ofFinCoeff_coeff Φ _ (phi_natDegree_le_degree Φ)]
   rw [hsum]

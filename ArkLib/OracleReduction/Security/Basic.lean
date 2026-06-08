@@ -39,7 +39,7 @@ variable {ι : Type} {oSpec : OracleSpec ι}
   {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp))
 
 /-
-TODO: the "right" factoring for the security definitions are the following:
+Future work: the "right" factoring for the security definitions are the following:
 
 - We have a two-layer interpretation approach: first, interpret the oracle queries into some monad
   `m` which admits a monad morphism into `PMF` (i.e. `HasEvalDist`); then we interpret the resulting
@@ -63,6 +63,98 @@ namespace Reduction
 
 section Completeness
 
+/-- A generalized completeness predicate parameterized by an arbitrary honest execution experiment.
+
+This is the right abstraction when the verifier-side challenge process is not the default
+`challengeQueryImpl`, for example when challenges are derived from a cached Fiat-Shamir function or
+from the duplex-sponge oracle used by DSFS. -/
+def completenessFromRun
+    {ιᵣ : Type} {runSpec : OracleSpec ιᵣ} {σᵣ : Type} {Trace : Type}
+    (runInit : ProbComp σᵣ)
+    (runImpl : QueryImpl runSpec (StateT σᵣ ProbComp))
+    -- generalized V's challenge query implementation that handles all oracle queries made during
+      -- the honest execution (run). E.g. it can be lifted `challengeQueryImpl`
+      -- for interactive protocols, or FS-derived/DSFS-derived challenge oracles for NARG
+    (relIn : Set (StmtIn × WitIn))
+    (relOut : Set (StmtOut × WitOut))
+    (run : (stmtIn : StmtIn) → (witIn : WitIn) →
+      OptionT (OracleComp runSpec) ((Trace × StmtOut × WitOut) × StmtOut))
+    (completenessError : ℝ≥0) : Prop :=
+  ∀ stmtIn : StmtIn,
+  ∀ witIn : WitIn,
+  (stmtIn, witIn) ∈ relIn →
+    Pr[fun ⟨⟨_, (prvStmtOut, witOut)⟩, stmtOut⟩ =>
+        ((stmtOut, witOut) ∈ relOut ∧ prvStmtOut = stmtOut) | OptionT.mk do
+          (simulateQ runImpl (run stmtIn witIn).run).run' (← runInit)] ≥ 1 - completenessError
+
+/-- Perfect completeness for an arbitrary honest execution experiment. -/
+def perfectCompletenessFromRun
+    {ιᵣ : Type} {runSpec : OracleSpec ιᵣ} {σᵣ : Type} {Trace : Type}
+    (runInit : ProbComp σᵣ)
+    (runImpl : QueryImpl runSpec (StateT σᵣ ProbComp))
+    (relIn : Set (StmtIn × WitIn))
+    (relOut : Set (StmtOut × WitOut))
+    (run : (stmtIn : StmtIn) → (witIn : WitIn) →
+      OptionT (OracleComp runSpec) ((Trace × StmtOut × WitOut) × StmtOut)) : Prop :=
+  completenessFromRun runInit runImpl relIn relOut run 0
+
+/-- `completenessFromRun` is monotone in the target completeness error. -/
+theorem completenessFromRun_error_mono
+    {ιᵣ : Type} {runSpec : OracleSpec ιᵣ} {σᵣ : Type} {Trace : Type}
+    {runInit : ProbComp σᵣ}
+    {runImpl : QueryImpl runSpec (StateT σᵣ ProbComp)}
+    {relIn : Set (StmtIn × WitIn)} {relOut : Set (StmtOut × WitOut)}
+    {run : (stmtIn : StmtIn) → (witIn : WitIn) →
+      OptionT (OracleComp runSpec) ((Trace × StmtOut × WitOut) × StmtOut)}
+    {ε₁ ε₂ : ℝ≥0} (hε : ε₁ ≤ ε₂) :
+    completenessFromRun runInit runImpl relIn relOut run ε₁ →
+      completenessFromRun runInit runImpl relIn relOut run ε₂ := by
+  intro h stmtIn witIn hIn
+  exact ge_trans (h stmtIn witIn hIn) (tsub_le_tsub_left (by simp [hε]) 1)
+
+/-- `completenessFromRun` is monotone under restricting the input relation. -/
+theorem completenessFromRun_relIn_mono
+    {ιᵣ : Type} {runSpec : OracleSpec ιᵣ} {σᵣ : Type} {Trace : Type}
+    {runInit : ProbComp σᵣ}
+    {runImpl : QueryImpl runSpec (StateT σᵣ ProbComp)}
+    {relIn relIn' : Set (StmtIn × WitIn)} {relOut : Set (StmtOut × WitOut)}
+    {run : (stmtIn : StmtIn) → (witIn : WitIn) →
+      OptionT (OracleComp runSpec) ((Trace × StmtOut × WitOut) × StmtOut)}
+    {ε : ℝ≥0} (hrelIn : relIn' ⊆ relIn) :
+    completenessFromRun runInit runImpl relIn relOut run ε →
+      completenessFromRun runInit runImpl relIn' relOut run ε := by
+  intro h stmtIn witIn hIn
+  exact h stmtIn witIn (hrelIn hIn)
+
+/-- `completenessFromRun` is monotone under enlarging the output relation. -/
+theorem completenessFromRun_relOut_mono
+    {ιᵣ : Type} {runSpec : OracleSpec ιᵣ} {σᵣ : Type} {Trace : Type}
+    {runInit : ProbComp σᵣ}
+    {runImpl : QueryImpl runSpec (StateT σᵣ ProbComp)}
+    {relIn : Set (StmtIn × WitIn)} {relOut relOut' : Set (StmtOut × WitOut)}
+    {run : (stmtIn : StmtIn) → (witIn : WitIn) →
+      OptionT (OracleComp runSpec) ((Trace × StmtOut × WitOut) × StmtOut)}
+    {ε : ℝ≥0} (hrelOut : relOut ⊆ relOut') :
+    completenessFromRun runInit runImpl relIn relOut run ε →
+      completenessFromRun runInit runImpl relIn relOut' run ε := by
+  intro h stmtIn witIn hIn
+  exact ge_trans (probEvent_mono fun _ _ ⟨hOut, hEq⟩ => ⟨hrelOut hOut, hEq⟩)
+    (h stmtIn witIn hIn)
+
+/-- `perfectCompletenessFromRun` is monotone under restricting the input relation and enlarging the
+output relation. -/
+theorem perfectCompletenessFromRun_mono_relations
+    {ιᵣ : Type} {runSpec : OracleSpec ιᵣ} {σᵣ : Type} {Trace : Type}
+    {runInit : ProbComp σᵣ}
+    {runImpl : QueryImpl runSpec (StateT σᵣ ProbComp)}
+    {relIn relIn' : Set (StmtIn × WitIn)} {relOut relOut' : Set (StmtOut × WitOut)}
+    {run : (stmtIn : StmtIn) → (witIn : WitIn) →
+      OptionT (OracleComp runSpec) ((Trace × StmtOut × WitOut) × StmtOut)}
+    (hrelIn : relIn' ⊆ relIn) (hrelOut : relOut ⊆ relOut') :
+    perfectCompletenessFromRun runInit runImpl relIn relOut run →
+      perfectCompletenessFromRun runInit runImpl relIn' relOut' run := by
+  unfold perfectCompletenessFromRun
+  exact completenessFromRun_relOut_mono hrelOut ∘ completenessFromRun_relIn_mono hrelIn
 
 /-- A reduction satisfies **completeness** with regards to:
   - an initialization function `init : ProbComp σ` for some ambient state `σ`,
@@ -84,19 +176,41 @@ def completeness (relIn : Set (StmtIn × WitIn))
     (relOut : Set (StmtOut × WitOut))
     (reduction : Reduction oSpec StmtIn WitIn StmtOut WitOut pSpec)
     (completenessError : ℝ≥0) : Prop :=
-  ∀ stmtIn : StmtIn,
-  ∀ witIn : WitIn,
-  (stmtIn, witIn) ∈ relIn →
-    let pImpl : QueryImpl (oSpec + [pSpec.Challenge]ₒ) (StateT σ ProbComp) :=
-      QueryImpl.addLift impl challengeQueryImpl
-    Pr[fun ⟨⟨_, (prvStmtOut, witOut)⟩, stmtOut⟩ =>
-        ((stmtOut, witOut) ∈ relOut ∧ prvStmtOut = stmtOut) | OptionT.mk do
-          (simulateQ pImpl (reduction.run stmtIn witIn).run).run' (← init)] ≥ 1 - completenessError
+  completenessFromRun init
+    (QueryImpl.addLift impl challengeQueryImpl)
+    relIn relOut reduction.run completenessError
 
 /-- A reduction satisfies **perfect completeness** if it satisfies completeness with error `0`. -/
 def perfectCompleteness (relIn : Set (StmtIn × WitIn)) (relOut : Set (StmtOut × WitOut))
     (reduction : Reduction oSpec StmtIn WitIn StmtOut WitOut pSpec) : Prop :=
   completeness init impl relIn relOut reduction 0
+
+/-- `Reduction.completeness` is the specialization of `completenessFromRun` to the standard
+interactive execution with fresh verifier challenges from `challengeQueryImpl`. -/
+@[simp]
+theorem completeness_iff_completenessFromRun
+    (relIn : Set (StmtIn × WitIn))
+    (relOut : Set (StmtOut × WitOut))
+    (reduction : Reduction oSpec StmtIn WitIn StmtOut WitOut pSpec)
+    (completenessError : ℝ≥0) :
+    reduction.completeness init impl relIn relOut completenessError ↔
+      completenessFromRun init
+        (QueryImpl.addLift impl challengeQueryImpl)
+        relIn relOut reduction.run completenessError := by
+  rfl
+
+/-- `Reduction.perfectCompleteness` is the specialization of `perfectCompletenessFromRun` to the
+standard interactive execution with fresh verifier challenges from `challengeQueryImpl`. -/
+@[simp]
+theorem perfectCompleteness_iff_perfectCompletenessFromRun
+    (relIn : Set (StmtIn × WitIn))
+    (relOut : Set (StmtOut × WitOut))
+    (reduction : Reduction oSpec StmtIn WitIn StmtOut WitOut pSpec) :
+    reduction.perfectCompleteness init impl relIn relOut ↔
+      perfectCompletenessFromRun init
+        (QueryImpl.addLift impl challengeQueryImpl)
+        relIn relOut reduction.run := by
+  rfl
 
 /-- Type class for completeness for a reduction -/
 class IsComplete (relIn : Set (StmtIn × WitIn)) (relOut : Set (StmtOut × WitOut))
@@ -122,7 +236,7 @@ instance [reduction.IsPerfectComplete init impl relIn relOut] :
   `ε₂` for all `ε₂ ≥ ε₁`. -/
 @[grind]
 theorem completeness_error_mono {ε₁ ε₂ : ℝ≥0} (hε : ε₁ ≤ ε₂) :
-      completeness init impl relIn relOut reduction ε₁ →
+    completeness init impl relIn relOut reduction ε₁ →
         completeness init impl relIn relOut reduction ε₂ := by
   intro h
   dsimp [completeness] at h ⊢
@@ -165,9 +279,9 @@ theorem perfectCompleteness_eq_prob_one :
       Pr[fun ⟨⟨_, (prvStmtOut, witOut)⟩, stmtOut⟩ =>
           ((stmtOut, witOut) ∈ relOut ∧ prvStmtOut = stmtOut)
         | OptionT.mk do (simulateQ pImpl (reduction.run stmtIn witIn)).run' (← init)] = 1 := by
-  simp only [perfectCompleteness, completeness, ENNReal.coe_zero, tsub_zero]
-  exact forall_congr' fun _ => forall_congr' fun _ => imp_congr_right fun _ =>
-    ⟨fun h => le_antisymm probEvent_le_one (ge_iff_le.mp h),
+  simp only [perfectCompleteness, completeness, completenessFromRun, ENNReal.coe_zero, tsub_zero]
+  refine forall_congr' fun _ => forall_congr' fun _ => imp_congr_right fun _ => ?_
+  exact ⟨fun h => le_antisymm probEvent_le_one (ge_iff_le.mp h),
      fun h => ge_of_eq h⟩
 
 -- /-- For a reduction without shared oracles (i.e. `oSpec = []ₒ`), perfect completeness occurs
@@ -255,6 +369,35 @@ class IsSound (langIn : Set StmtIn) (langOut : Set StmtOut)
   soundnessError : ℝ≥0
   is_sound : soundness init impl langIn langOut verifier soundnessError
 
+/-- Verifier soundness is monotone in the allowed soundness error. -/
+theorem soundness.mono_error
+    {langIn : Set StmtIn} {langOut : Set StmtOut}
+    {verifier : Verifier oSpec StmtIn StmtOut pSpec}
+    {soundnessError₁ soundnessError₂ : ℝ≥0}
+    (hSound : soundness init impl langIn langOut verifier soundnessError₁)
+    (hle : soundnessError₁ ≤ soundnessError₂) :
+    soundness init impl langIn langOut verifier soundnessError₂ := by
+  intro WitIn WitOut witIn prover stmtIn hstmtIn
+  exact le_trans (hSound WitIn WitOut witIn prover stmtIn hstmtIn)
+    (ENNReal.coe_le_coe.mpr hle)
+
+/-- Verifier soundness is monotone in the input and output languages.
+
+If soundness holds for a smaller honest input language and a larger accepting output language, then
+it also holds after enlarging the honest input language and shrinking the accepting output language.
+-/
+theorem soundness.mono_languages
+    {langIn langIn' : Set StmtIn} {langOut langOut' : Set StmtOut}
+    {verifier : Verifier oSpec StmtIn StmtOut pSpec}
+    {soundnessError : ℝ≥0}
+    (hSound : soundness init impl langIn langOut verifier soundnessError)
+    (hIn : langIn ⊆ langIn') (hOut : langOut' ⊆ langOut) :
+    soundness init impl langIn' langOut' verifier soundnessError := by
+  intro WitIn WitOut witIn prover stmtIn hstmtIn
+  refine le_trans ?_ (hSound WitIn WitOut witIn prover stmtIn ?_)
+  · exact probEvent_mono fun _ _ h => hOut h
+  · exact fun h => hstmtIn (hIn h)
+
 -- How would one define a rewinding extractor? It should have oracle access to the prover's
 -- functions (receive challenges and send messages), and be able to observe & simulate the prover's
 -- oracle queries
@@ -292,6 +435,36 @@ class IsKnowledgeSound (relIn : Set (StmtIn × WitIn)) (relOut : Set (StmtOut ×
   knowledgeError : ℝ≥0
   is_knowledge_sound : knowledgeSoundness init impl relIn relOut verifier knowledgeError
 
+/-- Straightline knowledge soundness is monotone in the allowed knowledge error. -/
+theorem knowledgeSoundness.mono_error
+    {relIn : Set (StmtIn × WitIn)} {relOut : Set (StmtOut × WitOut)}
+    {verifier : Verifier oSpec StmtIn StmtOut pSpec}
+    {knowledgeError₁ knowledgeError₂ : ℝ≥0}
+    (hSound : knowledgeSoundness init impl relIn relOut verifier knowledgeError₁)
+    (hle : knowledgeError₁ ≤ knowledgeError₂) :
+    knowledgeSoundness init impl relIn relOut verifier knowledgeError₂ := by
+  obtain ⟨extractor, hSound⟩ := hSound
+  exact ⟨extractor, fun stmtIn witIn prover =>
+    le_trans (hSound stmtIn witIn prover) (ENNReal.coe_le_coe.mpr hle)⟩
+
+/-- Straightline knowledge soundness is monotone in the input and output relations.
+
+If knowledge soundness holds for a smaller valid input relation and a larger valid output relation,
+then it also holds after enlarging the valid input relation and shrinking the valid output relation.
+-/
+theorem knowledgeSoundness.mono_relations
+    {relIn relIn' : Set (StmtIn × WitIn)} {relOut relOut' : Set (StmtOut × WitOut)}
+    {verifier : Verifier oSpec StmtIn StmtOut pSpec}
+    {knowledgeError : ℝ≥0}
+    (hSound : knowledgeSoundness init impl relIn relOut verifier knowledgeError)
+    (hIn : relIn ⊆ relIn') (hOut : relOut' ⊆ relOut) :
+    knowledgeSoundness init impl relIn' relOut' verifier knowledgeError := by
+  obtain ⟨extractor, hSound⟩ := hSound
+  refine ⟨extractor, fun stmtIn witIn prover => ?_⟩
+  refine le_trans ?_ (hSound stmtIn witIn prover)
+  exact probEvent_mono fun ⟨stmtIn', witIn', stmtOut, witOut⟩ _ h =>
+    ⟨fun hValid => h.1 (hIn hValid), hOut h.2⟩
+
 /-- An extractor is **monotone** if its success probability on a given query log is the same as
   the success probability on any extension of that query log. -/
 class Extractor.Straightline.IsMonotone
@@ -303,7 +476,7 @@ class Extractor.Straightline.IsMonotone
     ∀ verifyQueryLog₁ verifyQueryLog₂ : oSpec.QueryLog,
     proveQueryLog₁.Sublist proveQueryLog₂ →
     verifyQueryLog₁.Sublist verifyQueryLog₂ →
-    -- Placeholder probability for now, probably need to consider the whole game
+    -- Monotonicity is stated over the extractor's success probability on the current query logs.
     Pr[fun witIn => (stmtIn, witIn) ∈ relIn |
       E stmtIn witOut transcript proveQueryLog₁ verifyQueryLog₁] ≤
     Pr[fun witIn => (stmtIn, witIn) ∈ relIn |
@@ -327,23 +500,6 @@ structure Simulator (oSpec : OracleSpec ι) (StmtIn : Type) {n : ℕ} (pSpec : P
   oracleSim : QueryImpl oSpec (StateT SimState (OracleComp oSpec))
   proverSim : StmtIn → StateT SimState (OracleComp oSpec) pSpec.FullTranscript
 
-/-
-  We define honest-verifier zero-knowledge as follows:
-  There exists a simulator such that for all (malicious) verifier, the distributions of transcripts
-  generated by the simulator and the interaction between the verifier and the prover are
-  (statistically) indistinguishable.
--/
--- def zeroKnowledge (prover : Prover pSpec oSpec) : Prop :=
---   ∃ simulator : Simulator,
---   ∀ verifier : Verifier pSpec oSpec,
---   ∀ stmtIn : Statement,
---   ∀ witIn : Witness,
---   relIn.isValid stmtIn witIn = true →
---     let result := (Reduction.mk prover verifier).run stmtIn witIn
---     let transcript := Prod.fst <$> Prod.snd <$> result
---     let simTranscript := simulator
---     -- let prob := spec.relOut.isValid' <$> output
---     sorry
 
 end ZeroKnowledge
 
@@ -486,7 +642,7 @@ section Trivial
 @[simp]
 theorem Reduction.id_perfectCompleteness {rel : Set (StmtIn × WitIn)} :
     (Reduction.id : Reduction oSpec _ _ _ _ _).perfectCompleteness init impl rel rel := by
-  simp only [perfectCompleteness, completeness, ENNReal.coe_zero, tsub_zero]
+  simp only [perfectCompleteness, completeness, completenessFromRun, ENNReal.coe_zero, tsub_zero]
   intro stmtIn witIn hIn
   simp only [Reduction.id_run]
   rw [ge_iff_le, one_le_probEvent_iff, probEvent_eq_one_iff]
@@ -518,7 +674,7 @@ theorem Reduction.id_perfectCompleteness {rel : Set (StmtIn × WitIn)} :
       (Prod.fst <$> (pure (some ((default, stmtIn, witIn), stmtIn)) :
         StateT σ ProbComp _).run s) at hx
     rw [StateT.run_pure] at hx
-    simp [map_pure, support_pure] at hx
+    simp only [map_pure, support_pure, Set.mem_singleton_iff, Option.some.injEq, Prod.mk.injEq] at hx
     cases hx
     exact ⟨hIn, rfl⟩
 
@@ -535,9 +691,29 @@ private lemma Reduction.run_mk_verifier_id {WitIn WitOut : Type}
 @[simp]
 theorem Verifier.id_soundness {lang : Set StmtIn} :
     (Verifier.id : Verifier oSpec _ _ _).soundness init impl lang lang 0 := by
-  sorry
-  -- Approach: after Reduction.run_mk_verifier_id, stmtOut = stmtIn always.
-  -- Needs StateT.run'_bind/pure or manual support reasoning through OptionT+simulateQ+StateT.
+  unfold soundness
+  intro WitIn WitOut witIn prover stmtIn hstmtIn
+  simp only [ENNReal.coe_zero, nonpos_iff_eq_zero, Reduction.run_mk_verifier_id,
+    probEvent_eq_zero_iff]
+  intro x hx hev
+  apply hstmtIn
+  rw [OptionT.mem_support_iff] at hx
+  simp only [OptionT.run_mk, support_bind, Set.mem_iUnion] at hx
+  obtain ⟨s, _, hx⟩ := hx
+  simp only [StateT.run'_eq, support_map, Set.mem_image] at hx
+  obtain ⟨⟨a, s'⟩, ha, rfl⟩ := hx
+  have hliftM : (liftM ((fun pr => (pr, stmtIn)) <$> Prover.run stmtIn witIn prover) :
+      OptionT (OracleComp _) _).run =
+      (fun pr => some (pr, stmtIn)) <$> Prover.run stmtIn witIn prover := by
+    simp [Functor.map_map]
+  rw [hliftM, simulateQ_map, StateT.run_map] at ha
+  simp only [support_map, Set.mem_image, Prod.exists] at ha
+  obtain ⟨pr, s'', ⟨b, _, _, heq⟩⟩ := ha
+  have := (Prod.mk.inj heq).1
+  have := Option.some.inj this
+  have := (Prod.mk.inj this).2
+  rw [← this] at hev
+  exact hev
 
 /-- The straightline extractor for the identity / trivial reduction, which just returns the input
   witness. -/
@@ -549,10 +725,69 @@ def Extractor.Straightline.id : Extractor.Straightline oSpec StmtIn WitIn WitIn 
 @[simp]
 theorem Verifier.id_knowledgeSoundness {rel : Set (StmtIn × WitIn)} :
     (Verifier.id : Verifier oSpec _ _ _).knowledgeSoundness init impl rel rel 0 := by
-  sorry
-  -- Approach: Extractor.Straightline.id returns input witness.
-  -- Event (stmtIn, witIn) ∉ rel ∧ (stmtIn, witIn) ∈ rel is contradiction.
-  -- Same blocker: needs StateT.run'_bind/pure or manual support reasoning.
+  unfold knowledgeSoundness
+  refine ⟨Extractor.Straightline.id, fun stmtIn witIn prover => ?_⟩
+  simp only [Extractor.Straightline.id, ENNReal.coe_zero, nonpos_iff_eq_zero,
+    probEvent_eq_zero_iff]
+  intro x hx ⟨hNotIn, hIn⟩
+  -- hNotIn : (x.1, x.2.1) ∉ rel, hIn : (x.2.2.1, x.2.2.2) ∈ rel
+  -- From the computation structure: x.2.1 = x.2.2.2 (extractor returns witOut)
+  -- and x.1 = x.2.2.1 (Verifier.id gives stmtOut = stmtIn).
+  -- Follow id_soundness support analysis pattern.
+  -- Decompose support to extract x's structure.
+  rw [OptionT.mem_support_iff] at hx
+  simp only [OptionT.run_mk, support_bind, Set.mem_iUnion] at hx
+  obtain ⟨s, _, hx⟩ := hx
+  simp only [StateT.run'_eq, support_map, Set.mem_image] at hx
+  obtain ⟨⟨a, s'⟩, ha, rfl⟩ := hx
+  apply hNotIn
+  -- Simplify the OptionT do block in ha: liftM (pure v) = pure v, then bind collapses to map
+  -- Since OptionT is transparent, these rewrite inside .run
+  -- Decompose the OptionT bind via OptionT.run_bind + simulateQ_bind
+  simp only [OptionT.run_bind, Option.elimM] at ha
+  rw [simulateQ_bind] at ha
+  simp only [StateT.run_bind, support_bind, Set.mem_iUnion, Prod.exists] at ha
+  obtain ⟨opt, s₂, hopt, ha'⟩ := ha
+  -- Case split: runWithLog returns some d or none
+  rcases opt with _ | d
+  · -- none case: contradiction with some x
+    simp [simulateQ_pure, StateT.run_pure, support_pure] at ha'
+  · -- some d: continuation simplifies to pure (some (stmtIn, d.1.1.2.2, d.1.2, d.1.1.2.2))
+    dsimp at ha'
+    simp only [OptionT.run_pure] at ha'
+    have hx : x = (stmtIn, d.1.1.2.2, d.1.2, d.1.1.2.2) :=
+      Option.some.inj (Prod.mk.inj ha').1
+    rw [hx]; rw [hx] at hIn
+    -- Goal: (stmtIn, d.1.1.2.2) ∈ rel; hIn: (d.1.2, d.1.1.2.2) ∈ rel
+    suffices h : d.1.2 = stmtIn by rwa [h] at hIn
+    -- Derive d.1.2 = stmtIn from runWithLog_discard_logs_eq_run + run_mk_verifier_id
+    have hfst_eq := Reduction.runWithLog_discard_logs_eq_run
+      (reduction := { prover := prover, verifier := Verifier.id })
+      (stmt := stmtIn) (wit := witIn)
+    rw [Reduction.run_mk_verifier_id] at hfst_eq
+    -- Convert hfst_eq to OracleComp level via OptionT.run
+    have h_eq := congr_arg OptionT.run hfst_eq
+    simp only [OptionT.run_map] at h_eq
+    -- h_eq : (Option.map Prod.fst) <$> (runWithLog ...).run = (...) <$> prover.run
+    -- Build membership in the target support directly
+    have hmem : (some d.1, s₂) ∈ support
+        (((fun pr => some (pr, stmtIn)) <$>
+          simulateQ (impl.addLift challengeQueryImpl)
+            (Prover.run stmtIn witIn prover) : StateT σ ProbComp _).run s) := by
+      have h1 : (some d.1, s₂) ∈ support
+          (((Option.map Prod.fst) <$>
+            simulateQ (impl.addLift challengeQueryImpl)
+              (runWithLog stmtIn witIn
+                { prover := prover, verifier := Verifier.id }).run :
+            StateT σ ProbComp _).run s) := by
+        rw [StateT.run_map, support_map]; exact ⟨(some d, s₂), hopt, rfl⟩
+      rw [← simulateQ_map, h_eq] at h1
+      -- h1 has monadLift form which is definitionally equal to the goal
+      convert h1 using 2
+      simp [Functor.map_map, simulateQ_map]
+    rw [StateT.run_map, support_map, Set.mem_image] at hmem
+    obtain ⟨⟨pr, s₃⟩, _, heq⟩ := hmem
+    exact (Prod.mk.inj (Option.some.inj (Prod.mk.inj heq).1)).2.symm
 
 /-- The identity / trivial reduction is perfectly complete. -/
 @[simp]

@@ -145,6 +145,40 @@ def new (id : Char) (count : Option Nat) : Except DomainSeparatorMismatch Op :=
   | ('S', some c) => if c > 0 then pure (Squeeze c) else .error ⟨"Invalid tag"⟩
   | _ => .error ⟨"Invalid tag"⟩
 
+@[simp] theorem new_absorb_of_pos {count : Nat} (hcount : 0 < count) :
+    new 'A' (some count) = .ok (Absorb count) := by
+  simp [new, hcount]
+  rfl
+
+@[simp] theorem new_absorb_zero :
+    new 'A' (some 0) = .error ⟨"Invalid tag"⟩ := by
+  rfl
+
+@[simp] theorem new_hint_none :
+    new 'H' none = .ok Hint := by
+  rfl
+
+@[simp] theorem new_hint_zero :
+    new 'H' (some 0) = .ok Hint := by
+  rfl
+
+@[simp] theorem new_ratchet_none :
+    new 'R' none = .ok Ratchet := by
+  rfl
+
+@[simp] theorem new_ratchet_zero :
+    new 'R' (some 0) = .ok Ratchet := by
+  rfl
+
+@[simp] theorem new_squeeze_of_pos {count : Nat} (hcount : 0 < count) :
+    new 'S' (some count) = .ok (Squeeze count) := by
+  simp [new, hcount]
+  rfl
+
+@[simp] theorem new_squeeze_zero :
+    new 'S' (some 0) = .error ⟨"Invalid tag"⟩ := by
+  rfl
+
 end Op
 
 variable {H : Type*} {U : Type} [SpongeUnit U] [DuplexSpongeInterface U H]
@@ -180,7 +214,7 @@ pub fn absorb(self, count: usize, label: &str) -> Self
 ```
 -/
 def absorb (ds : DomainSeparator U H) (count : Nat) (label : String) : DomainSeparator U H :=
-  -- TODO: Add assertions:
+  -- Note: Add assertions:
   -- - count > 0
   -- - label doesn't contain SEP_CHAR
   -- - label doesn't start with a digit
@@ -194,7 +228,7 @@ pub fn hint(self, label: &str) -> Self
 ```
 -/
 def hint (ds : DomainSeparator U H) (label : String) : DomainSeparator U H :=
-  -- TODO: Add assertion that label doesn't contain SEP_CHAR
+  -- Note: Add assertion that label doesn't contain SEP_CHAR
   { io := ds.io ++ SEP_BYTE ++ "H" ++ label }
 
 /-- Squeeze `count` native elements.
@@ -205,7 +239,7 @@ pub fn squeeze(self, count: usize, label: &str) -> Self
 ```
 -/
 def squeeze (ds : DomainSeparator U H) (count : Nat) (label : String) : DomainSeparator U H :=
-  -- TODO: Add assertions:
+  -- Note: Add assertions:
   -- - count > 0
   -- - label doesn't contain SEP_CHAR
   -- - label doesn't start with a digit

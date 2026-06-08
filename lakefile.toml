@@ -14,8 +14,13 @@ linter.style.longFile = 1500
 
 [[require]]
 name = "VCVio"
-git = "https://github.com/Verified-zkEVM/VCV-io"
-rev = "f85df0b4ec3ef4249876996da28a07c38e9137c2"
+git = "https://github.com/lalalune/VCV-io"
+rev = "576766ab24a044af560b05c58d2a1229857c7c07"
+
+[[require]]
+name = "PolyFun"
+git = "https://github.com/lalalune/PolyFun"
+rev = "5d3a160ed751b9227af90adb9da41d0eae2e0238"
 
 [[require]]
 name = "«doc-gen4»"
@@ -29,8 +34,8 @@ rev = "lean4.18.0"
 
 [[require]]
 name = "CompPoly"
-git = "https://github.com/Verified-zkEVM/CompPoly"
-rev = "067a22b6623a0d61f27deda02f8c8a0b8b339b33"
+git = "https://github.com/lalalune/CompPoly"
+rev = "bb0959d50751995ec32e6c4597f9446ecd42f970"
 
 [[lean_lib]]
 name = "ArkLib"

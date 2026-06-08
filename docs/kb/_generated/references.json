@@ -1,5 +1,5 @@
 {
-  "count": 50,
+  "count": 52,
   "entries": {
     "ACFY24": {
       "authors": [
@@ -71,6 +71,29 @@
       "url": "",
       "venue": "Annual International Conference on the Theory and Applications of Cryptographic Techniques",
       "year": "2025"
+    },
+    "AFK22": {
+      "authors": [
+        "Attema, Thomas",
+        "Fehr, Serge",
+        "Kloo{\\ss}, Michael"
+      ],
+      "authors_text": "Attema, Thomas and Fehr, Serge and Kloo{\\ss}, Michael",
+      "doi": "",
+      "entry_type": "inproceedings",
+      "fields": {
+        "author": "Attema, Thomas and Fehr, Serge and Kloo{\\ss}, Michael",
+        "booktitle": "Theory of Cryptography Conference (TCC)",
+        "organization": "Springer",
+        "title": "Fiat-Shamir Transformation of Multi-Round Interactive Proofs",
+        "url": "https://eprint.iacr.org/2021/1377",
+        "year": "2022"
+      },
+      "key": "AFK22",
+      "title": "Fiat-Shamir Transformation of Multi-Round Interactive Proofs",
+      "url": "https://eprint.iacr.org/2021/1377",
+      "venue": "Theory of Cryptography Conference (TCC)",
+      "year": "2022"
     },
     "AHIV22": {
       "authors": [
@@ -1085,20 +1108,18 @@
       ],
       "authors_text": "Guruswami, Venkatesan and Rudra, Atri and Sudan, Madhu",
       "doi": "",
-      "entry_type": "article",
+      "entry_type": "misc",
       "fields": {
         "author": "Guruswami, Venkatesan and Rudra, Atri and Sudan, Madhu",
-        "journal": "Draft available at http://www. cse. buffalo. edu/atri/courses/coding-theory/book",
-        "number": "1",
+        "note": "Draft (latest revision 2025), available at \\url{https://cse.buffalo.edu/faculty/atri/courses/coding-theory/book/}",
         "title": "Essential coding theory",
-        "volume": "2",
-        "year": "2012"
+        "year": "2025"
       },
       "key": "codingtheory",
       "title": "Essential coding theory",
       "url": "",
-      "venue": "Draft available at http://www. cse. buffalo. edu/atri/courses/coding-theory/book",
-      "year": "2012"
+      "venue": "",
+      "year": "2025"
     },
     "fics-facs": {
       "authors": [

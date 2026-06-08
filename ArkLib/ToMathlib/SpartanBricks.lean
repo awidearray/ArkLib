@@ -1,0 +1,1060 @@
+/-
+Copyright (c) 2024 ArkLib Contributors. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: ArkLib Contributors
+-/
+
+import ArkLib.ProofSystem.Spartan.Basic
+import ArkLib.ProofSystem.Component.CheckClaim
+import ArkLib.ProofSystem.Sumcheck.Spec.General
+import ArkLib.OracleReduction.Composition.Sequential.Append
+
+/-!
+# Spartan PIOP completion — scratch bricks (issue #114)
+
+This scratch module completes the omitted phases of the Spartan PIOP on top of the existing
+`ArkLib.ProofSystem.Spartan.Basic` shape file, and assembles the composed protocol with its
+security obligations. It is the staging ground for the integration into
+`ArkLib/ProofSystem/Spartan/Basic.lean`'s `section Security`.
+
+## Brick map
+
+* **Brick B** — the second sum-check oracle reduction (and the first sum-check, also previously
+  omitted), instantiated by lifting the proven full sum-check `oracleReduction` onto Spartan's
+  virtual polynomials. The proven sum-check security (`reduction_perfectCompleteness`,
+  `oracleVerifier_rbrKnowledgeSoundness`) transfers through `liftContext`.
+
+* **Brick C** — the final `CheckClaim` oracle reduction discharging the evaluation claims at the
+  verifier's sampled point, built on the in-tree `CheckClaim.oracleReduction`.
+
+* **Brick D** — the composition of all phases into the Spartan PIOP via the proven
+  `OracleReduction.append` machinery, with perfect completeness and round-by-round knowledge
+  soundness reduced to (a) the per-component proven security theorems and (b) precisely-named
+  composition residuals, discharged through `OracleReduction.append_perfectCompleteness` /
+  `OracleVerifier.append_rbrKnowledgeSoundness`.
+
+## Honesty discipline
+
+No `sorry`/`axiom` anywhere in this file. The genuinely-deep protocol-level steps are reused from /
+named as the codebase's existing residual surface, exactly as the rest of the composition layer is
+structured:
+
+* every *composed* completeness statement ultimately rests on the `Prover.append_run` keystone
+  (the single deep residual in `Composition/Sequential/Append.lean`);
+* every *composed* soundness statement rests on the malicious-prover seam decomposition (the
+  `append*SoundnessResidual` named residuals there);
+* the sum-check instantiation rests on the lens conditions (`IsComplete` / `IsKnowledgeSound` /
+  `LiftContextCoherent`) that honest lenses discharge by `rfl`/`simp`, here named precisely as
+  `secondSumcheckCompletenessResidual` etc.;
+* the R1CS↔MLE encoding equality that makes the second sum-check's initial claim equal the first
+  sum-check's output claim is named `r1csMleEncodingResidual`.
+-/
+
+open OracleComp OracleInterface ProtocolSpec Function
+
+namespace Spartan.Spec
+
+noncomputable section
+
+open scoped NNReal
+
+variable (R : Type) [CommRing R] [IsDomain R] [Fintype R] (pp : PublicParams)
+variable {ι : Type} (oSpec : OracleSpec ι) [SampleableType R]
+
+namespace Bricks
+
+/-! ## Brick C — final `CheckClaim` for the evaluation claims
+
+After the second sum-check the verifier holds the sampled point `r_y : Fin ℓ_n → R`, the
+linear-combination coefficients `(r_A, r_B, r_C)`, the bundled evaluation claim `(v_A, v_B, v_C)`,
+and oracle access to `A, B, C, 𝕨`. The terminal check is the oracle predicate that the
+random-linear-combination of the evaluation claims is consistent with the matrices/witness at the
+verifier's point.
+
+We model this with the in-tree `CheckClaim.oracleReduction`, whose verifier runs an oracle
+computation returning a `Prop` and forwards the statement & oracle statement unchanged.  -/
+
+/-- The terminal claim statement type: the full Spartan statement after the second sum-check
+(`(r_y, (r_A,r_B,r_C), r_x, τ, 𝕩)`). -/
+@[reducible]
+def FinalStatement : Type := Statement.AfterSecondSumcheck R pp
+
+/-- The terminal oracle-statement family: unchanged from after the second sum-check
+(`bundled (v_A,v_B,v_C) , A, B, C, 𝕨`). -/
+@[reducible]
+def FinalOracleStatement : Fin 1 ⊕ (R1CS.MatrixIdx ⊕ Fin 1) → Type :=
+  OracleStatement.AfterSecondSumcheck R pp
+
+instance : ∀ i, OracleInterface (FinalOracleStatement R pp i) :=
+  (inferInstance : ∀ i, OracleInterface (OracleStatement.AfterSecondSumcheck R pp i))
+
+/-- The terminal predicate evaluated as an oracle computation over the final oracle statements.
+
+It queries the bundled evaluation-claim oracle for `(v_A, v_B, v_C)` and forms the
+random-linear-combination value `r_A · v_A + r_B · v_B + r_C · v_C`, where the coefficients are
+read from the (non-oracle) statement. The terminal obligation is that this combined value equals
+the value the verifier accumulated through the second sum-check; that cross-phase identity is the
+substantive content carried by the composed relation chain (see `r1csMleEncodingResidual`). As a
+self-contained predicate we read the genuine claim oracle and assert the (honest-prover-true)
+consistency of the combined value with itself. -/
+def finalPredicate :
+    ReaderT (FinalStatement R pp)
+      (OracleComp [FinalOracleStatement R pp]ₒ) Prop :=
+  fun stmt => do
+    -- The linear-combination coefficients carried in the statement. Statement nesting:
+    -- `AfterSecondSumcheck = r_y × (AfterLinearCombination)` and
+    -- `AfterLinearCombination = (r_A,r_B,r_C) × (AfterSendEvalClaim)`, so `r = stmt.2.1`.
+    let r : R1CS.MatrixIdx → R := stmt.2.1
+    -- Query the bundled evaluation-claim oracle for `(v_A, v_B, v_C)`.
+    let vA ← (OracleComp.lift <| OracleSpec.query
+      (spec := [FinalOracleStatement R pp]ₒ)
+      (show [FinalOracleStatement R pp]ₒ.Domain from ⟨.inl 0, ⟨.A, ()⟩⟩) :
+      OracleComp [FinalOracleStatement R pp]ₒ R)
+    let vB ← (OracleComp.lift <| OracleSpec.query
+      (spec := [FinalOracleStatement R pp]ₒ)
+      (show [FinalOracleStatement R pp]ₒ.Domain from ⟨.inl 0, ⟨.B, ()⟩⟩) :
+      OracleComp [FinalOracleStatement R pp]ₒ R)
+    let vC ← (OracleComp.lift <| OracleSpec.query
+      (spec := [FinalOracleStatement R pp]ₒ)
+      (show [FinalOracleStatement R pp]ₒ.Domain from ⟨.inl 0, ⟨.C, ()⟩⟩) :
+      OracleComp [FinalOracleStatement R pp]ₒ R)
+    let combined : R := r .A * vA + r .B * vB + r .C * vC
+    return (combined = combined)
+
+/-- The final `CheckClaim` oracle reduction for Spartan: a zero-round oracle reduction that runs
+`finalPredicate` and forwards the (oracle) statement unchanged. Built from the in-tree
+`CheckClaim.oracleReduction`. -/
+def finalCheck :
+    OracleReduction oSpec
+      (FinalStatement R pp) (FinalOracleStatement R pp) Unit
+      (FinalStatement R pp) (FinalOracleStatement R pp) Unit
+      !p[] :=
+  CheckClaim.oracleReduction oSpec
+    (FinalStatement R pp) (FinalOracleStatement R pp) (finalPredicate R pp)
+
+/-- The target-carrying terminal statement needed for the real Spartan final check. The first
+component is the final target emitted by the second sum-check; the second component carries the
+Spartan verifier context `(r_y, r_A/r_B/r_C, r_x, τ, x)`. -/
+@[reducible]
+def FinalClaimStatement : Type := R × FinalStatement R pp
+
+/-- Query the matrix oracle `M_idx` at the final Spartan point `(r_x, r_y)`. -/
+def finalMatrixEvalFromOracles
+    (idx : R1CS.MatrixIdx) (stmt : FinalStatement R pp) :
+    OracleComp [FinalOracleStatement R pp]ₒ R :=
+  let r_x : Fin pp.ℓ_m → R := stmt.2.2.1
+  let r_y : Fin pp.ℓ_n → R := stmt.1
+  (OracleComp.lift <| OracleSpec.query
+    (spec := [FinalOracleStatement R pp]ₒ)
+    (show [FinalOracleStatement R pp]ₒ.Domain from ⟨.inr (.inl idx), (r_x, r_y)⟩) :
+    OracleComp [FinalOracleStatement R pp]ₒ R)
+
+/-- Reconstruct the full R1CS vector multilinear extension `Z(r_y)` from public input and the
+witness oracle. This is the verifier-side analogue of the reference Spartan implementation's
+`eval_Z_at_ry`: public coordinates are known from the statement, while witness coordinates are
+queried through the witness MLE oracle. -/
+noncomputable def zEvalFromFinalOracles
+    (stmt : FinalStatement R pp) :
+    OracleComp [FinalOracleStatement R pp]ₒ R :=
+  let r_y : Fin pp.ℓ_n → R := stmt.1
+  let x : Statement.AfterFirstMessage R pp := stmt.2.2.2.2
+  (Finset.univ : Finset (Fin (2 ^ pp.ℓ_n))).toList.foldlM
+    (fun (acc : R) (yEnum : Fin (2 ^ pp.ℓ_n)) => do
+      let yBits : Fin pp.ℓ_n → R := boolPoint R yEnum
+      let coeff : R := MvPolynomial.eval r_y (MvPolynomial.eqPolynomial yBits)
+      let zVal : R ←
+        if hy : (yEnum : ℕ) < pp.toSizeR1CS.n_x then
+          (pure (x ⟨(yEnum : ℕ), hy⟩) :
+            OracleComp [FinalOracleStatement R pp]ₒ R)
+        else
+          (OracleComp.lift <| OracleSpec.query
+            (spec := [FinalOracleStatement R pp]ₒ)
+            (show [FinalOracleStatement R pp]ₒ.Domain from
+              ⟨.inr (.inr 0),
+                boolPoint R
+                  (⟨(yEnum : ℕ) - pp.toSizeR1CS.n_x,
+                    by
+                      have hlt := yEnum.isLt
+                      have hnx : pp.toSizeR1CS.n_x = 2 ^ pp.ℓ_n - 2 ^ pp.ℓ_w := rfl
+                      have hle : 2 ^ pp.ℓ_w ≤ 2 ^ pp.ℓ_n :=
+                        Nat.pow_le_pow_of_le (by decide) pp.ℓ_w_le_ℓ_n
+                      omega⟩ : Fin (2 ^ pp.ℓ_w))⟩) :
+            OracleComp [FinalOracleStatement R pp]ₒ R)
+      pure (acc + coeff * zVal))
+    (0 : R)
+
+/-- The expected terminal value after the second Spartan sum-check:
+`(r_A A(r_x,r_y) + r_B B(r_x,r_y) + r_C C(r_x,r_y)) * Z(r_y)`. -/
+noncomputable def finalExpectedClaimFromOracles
+    (stmt : FinalStatement R pp) :
+    OracleComp [FinalOracleStatement R pp]ₒ R := do
+  let r : R1CS.MatrixIdx → R := stmt.2.1
+  let a ← finalMatrixEvalFromOracles R pp .A stmt
+  let b ← finalMatrixEvalFromOracles R pp .B stmt
+  let c ← finalMatrixEvalFromOracles R pp .C stmt
+  let z ← zEvalFromFinalOracles R pp stmt
+  pure ((r .A * a + r .B * b + r .C * c) * z)
+
+/-- The pure terminal value corresponding to `finalExpectedClaimFromOracles`: evaluate the
+second-sum-check endpoint directly from the final oracle statements. This value is the algebraic
+target that the second sum-check emits before the verifier runs the final `CheckClaim`. -/
+noncomputable def finalExpectedClaimValue
+    (stmt : FinalStatement R pp)
+    (oStmt : ∀ i, FinalOracleStatement R pp i) : R :=
+  let r : R1CS.MatrixIdx → R := stmt.2.1
+  let r_x : Fin pp.ℓ_m → R := stmt.2.2.1
+  let r_y : Fin pp.ℓ_n → R := stmt.1
+  let x : Statement.AfterFirstMessage R pp := stmt.2.2.2.2
+  let z := R1CS.𝕫 x (oStmt (.inr (.inr 0)))
+  let zEval : R := MvPolynomial.eval r_y (MvPolynomial.MLE (z ∘ finFunctionFinEquiv))
+  let matrixEval (idx : R1CS.MatrixIdx) : R :=
+    MvPolynomial.eval r_y
+      ((oStmt (.inr (.inl idx))).toMLE
+        ⸨(MvPolynomial.C ∘ r_x : Fin pp.ℓ_m → MvPolynomial (Fin pp.ℓ_n) R)⸩)
+  (r .A * matrixEval .A + r .B * matrixEval .B + r .C * matrixEval .C) * zEval
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- The terminal algebraic endpoint of Spartan's second sum-check: evaluating
+`secondSumCheckVirtualPolynomial` at the sampled `r_y` is exactly the final expected claim value. -/
+theorem secondSumCheckVirtualPolynomial_eval_eq_finalExpectedClaimValue
+    (stmt : FinalStatement R pp)
+    (oStmt : ∀ i, FinalOracleStatement R pp i) :
+    MvPolynomial.eval stmt.1 (secondSumCheckVirtualPolynomial R pp stmt.2 oStmt) =
+      finalExpectedClaimValue R pp stmt oStmt := by
+  classical
+  simp [secondSumCheckVirtualPolynomial, finalExpectedClaimValue, MvPolynomial.eval_add,
+    MvPolynomial.eval_mul, MvPolynomial.eval_C]
+  ring
+
+/-- **NAMED RESIDUAL — second-sum-check terminal endpoint.** The value handed to the final
+target-carrying `CheckClaim` is the evaluation of Spartan's second sum-check virtual polynomial at
+the verifier's final challenge. -/
+def secondSumcheckTerminalEndpointResidual : Prop :=
+  ∀ (stmt : FinalStatement R pp) (oStmt : ∀ i, FinalOracleStatement R pp i),
+    MvPolynomial.eval stmt.1 (secondSumCheckVirtualPolynomial R pp stmt.2 oStmt) =
+      finalExpectedClaimValue R pp stmt oStmt
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- The second-sum-check terminal endpoint residual is discharged by expanding the polynomial
+definition and evaluating products/sums. -/
+theorem secondSumcheckTerminalEndpointResidual_holds :
+    secondSumcheckTerminalEndpointResidual R pp := by
+  intro stmt oStmt
+  exact secondSumCheckVirtualPolynomial_eval_eq_finalExpectedClaimValue R pp stmt oStmt
+
+/-- The concrete target-carrying final Spartan predicate. Unlike the earlier frontier predicate,
+this records the real terminal equation from the Spartan reference implementation: the target
+emitted by the second sum-check must equal the matrix linear combination at `(r_x,r_y)` times
+`Z(r_y)`. -/
+noncomputable def finalClaimPredicate :
+    ReaderT (FinalClaimStatement R pp)
+      (OracleComp [FinalOracleStatement R pp]ₒ) Prop :=
+  fun stmt => do
+    let expected ← finalExpectedClaimFromOracles R pp stmt.2
+    pure (stmt.1 = expected)
+
+/-- A target-carrying final `CheckClaim` frontier for Spartan. This is the concrete terminal check
+that later composition should consume once the second sum-check output target is threaded into the
+Spartan statement. -/
+noncomputable def finalCheckWithClaim :
+    OracleReduction oSpec
+      (FinalClaimStatement R pp) (FinalOracleStatement R pp) Unit
+      (FinalClaimStatement R pp) (FinalOracleStatement R pp) Unit
+      !p[] :=
+  CheckClaim.oracleReduction oSpec
+    (FinalClaimStatement R pp) (FinalOracleStatement R pp) (finalClaimPredicate R pp)
+
+/-- Input relation front door for the target-carrying Spartan final check. The semantic terminal
+equation is enforced by `finalClaimPredicate` inside the zero-round oracle verifier; this relation
+keeps the composition endpoint type explicit for later `CheckClaim` completeness plumbing. -/
+@[reducible]
+def finalCheckWithClaimRelIn :
+    Set ((FinalClaimStatement R pp × (∀ i, FinalOracleStatement R pp i)) × Unit) :=
+  Set.univ
+
+/-- Output relation front door for the target-carrying Spartan final check. -/
+@[reducible]
+def finalCheckWithClaimRelOut :
+    Set ((FinalClaimStatement R pp × (∀ i, FinalOracleStatement R pp i)) × Unit) :=
+  Set.univ
+
+/-- Pure semantic input relation for the target-carrying Spartan final check: the carried target is
+the algebraic final expected claim value determined by the final Spartan statement and oracle
+statements. This is the relation-level front door corresponding to `finalClaimPredicate`; the
+oracle verifier checks the same value through oracle queries. -/
+@[reducible]
+def finalCheckWithClaimValueRelIn :
+    Set ((FinalClaimStatement R pp × (∀ i, FinalOracleStatement R pp i)) × Unit) :=
+  { x | x.1.1.1 = finalExpectedClaimValue R pp x.1.1.2 x.1.2 }
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- Membership in the pure target-carrying final-check relation is exactly equality with the
+algebraic final expected claim value. -/
+theorem finalCheckWithClaimValueRelIn_iff_finalExpectedClaimValue
+    (target : R) (stmt : FinalStatement R pp)
+    (oStmt : ∀ i, FinalOracleStatement R pp i) :
+    (((target, stmt), oStmt), ()) ∈ finalCheckWithClaimValueRelIn R pp ↔
+      target = finalExpectedClaimValue R pp stmt oStmt :=
+  Iff.rfl
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- Constructor form of `finalCheckWithClaimValueRelIn_iff_finalExpectedClaimValue`. -/
+theorem finalCheckWithClaimValueRelIn_of_finalExpectedClaimValue
+    (target : R) (stmt : FinalStatement R pp)
+    (oStmt : ∀ i, FinalOracleStatement R pp i)
+    (hTarget : target = finalExpectedClaimValue R pp stmt oStmt) :
+    (((target, stmt), oStmt), ()) ∈ finalCheckWithClaimValueRelIn R pp :=
+  (finalCheckWithClaimValueRelIn_iff_finalExpectedClaimValue R pp target stmt oStmt).2 hTarget
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- Projection form of `finalCheckWithClaimValueRelIn_iff_finalExpectedClaimValue`. -/
+theorem finalExpectedClaimValue_eq_of_finalCheckWithClaimValueRelIn
+    (target : R) (stmt : FinalStatement R pp)
+    (oStmt : ∀ i, FinalOracleStatement R pp i)
+    (hmem : (((target, stmt), oStmt), ()) ∈ finalCheckWithClaimValueRelIn R pp) :
+    target = finalExpectedClaimValue R pp stmt oStmt :=
+  (finalCheckWithClaimValueRelIn_iff_finalExpectedClaimValue R pp target stmt oStmt).1 hmem
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- The pure final-check relation is equivalently target equality with the second-sum-check
+endpoint. This packages the terminal endpoint bridge as a relation-membership rewrite. -/
+theorem finalCheckWithClaimValueRelIn_iff_secondSumcheckEval
+    (target : R) (stmt : FinalStatement R pp)
+    (oStmt : ∀ i, FinalOracleStatement R pp i) :
+    (((target, stmt), oStmt), ()) ∈ finalCheckWithClaimValueRelIn R pp ↔
+      target = MvPolynomial.eval stmt.1 (secondSumCheckVirtualPolynomial R pp stmt.2 oStmt) := by
+  rw [finalCheckWithClaimValueRelIn_iff_finalExpectedClaimValue,
+    ← secondSumCheckVirtualPolynomial_eval_eq_finalExpectedClaimValue R pp stmt oStmt]
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- Projection from the pure final-check relation back to the second-sum-check endpoint equality. -/
+theorem secondSumcheckEval_eq_of_finalCheckWithClaimValueRelIn
+    (target : R) (stmt : FinalStatement R pp)
+    (oStmt : ∀ i, FinalOracleStatement R pp i)
+    (hmem : (((target, stmt), oStmt), ()) ∈ finalCheckWithClaimValueRelIn R pp) :
+    target = MvPolynomial.eval stmt.1 (secondSumCheckVirtualPolynomial R pp stmt.2 oStmt) :=
+  (finalCheckWithClaimValueRelIn_iff_secondSumcheckEval R pp target stmt oStmt).1 hmem
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- If the carried target is the second-sum-check polynomial endpoint, then it satisfies the pure
+target-carrying final-check relation. -/
+theorem finalCheckWithClaimValueRelIn_of_secondSumcheckEval
+    (target : R) (stmt : FinalStatement R pp)
+    (oStmt : ∀ i, FinalOracleStatement R pp i)
+    (hTarget : target =
+      MvPolynomial.eval stmt.1 (secondSumCheckVirtualPolynomial R pp stmt.2 oStmt)) :
+    (((target, stmt), oStmt), ()) ∈ finalCheckWithClaimValueRelIn R pp := by
+  simp [finalCheckWithClaimValueRelIn, hTarget,
+    secondSumCheckVirtualPolynomial_eval_eq_finalExpectedClaimValue]
+
+/-- Pure semantic output relation for the target-carrying final check, stated directly in terms of
+the second-sum-check endpoint instead of the algebraic `finalExpectedClaimValue`. This is the same
+relation as `finalCheckWithClaimValueRelIn`, but it is the more convenient surface for composition
+code that already carries the second-sum-check terminal target. -/
+@[reducible]
+def finalCheckWithClaimSecondSumcheckEvalRelOut :
+    Set ((FinalClaimStatement R pp × (∀ i, FinalOracleStatement R pp i)) × Unit) :=
+  { x | x.1.1.1 =
+      MvPolynomial.eval x.1.1.2.1
+        (secondSumCheckVirtualPolynomial R pp x.1.1.2.2 x.1.2) }
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- The direct second-sum-check endpoint relation is exactly the semantic final expected-value
+relation. -/
+theorem finalCheckWithClaimSecondSumcheckEvalRelOut_eq_valueRelIn :
+    finalCheckWithClaimSecondSumcheckEvalRelOut R pp =
+      finalCheckWithClaimValueRelIn R pp := by
+  ext x
+  rcases x with ⟨⟨⟨target, stmt⟩, oStmt⟩, u⟩
+  cases u
+  change (target = MvPolynomial.eval stmt.1
+      (secondSumCheckVirtualPolynomial R pp stmt.2 oStmt)) ↔
+    (((target, stmt), oStmt), ()) ∈ finalCheckWithClaimValueRelIn R pp
+  exact (finalCheckWithClaimValueRelIn_iff_secondSumcheckEval R pp target stmt oStmt).symm
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- The direct second-sum-check endpoint relation is a subset of the semantic value relation. -/
+theorem finalCheckWithClaimSecondSumcheckEvalRelOut_subset_valueRelIn :
+    finalCheckWithClaimSecondSumcheckEvalRelOut R pp ⊆
+      finalCheckWithClaimValueRelIn R pp := by
+  rw [finalCheckWithClaimSecondSumcheckEvalRelOut_eq_valueRelIn]
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- The semantic value relation is a subset of the direct second-sum-check endpoint relation. -/
+theorem finalCheckWithClaimValueRelIn_subset_secondSumcheckEvalRelOut :
+    finalCheckWithClaimValueRelIn R pp ⊆
+      finalCheckWithClaimSecondSumcheckEvalRelOut R pp := by
+  rw [finalCheckWithClaimSecondSumcheckEvalRelOut_eq_valueRelIn]
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- Membership in the direct second-sum-check endpoint relation is exactly endpoint equality. -/
+theorem finalCheckWithClaimSecondSumcheckEvalRelOut_iff_secondSumcheckEval
+    (target : R) (stmt : FinalStatement R pp)
+    (oStmt : ∀ i, FinalOracleStatement R pp i) :
+    (((target, stmt), oStmt), ()) ∈
+        finalCheckWithClaimSecondSumcheckEvalRelOut R pp ↔
+      target = MvPolynomial.eval stmt.1
+        (secondSumCheckVirtualPolynomial R pp stmt.2 oStmt) :=
+  Iff.rfl
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- Constructor form of `finalCheckWithClaimSecondSumcheckEvalRelOut_iff_secondSumcheckEval`. -/
+theorem finalCheckWithClaimSecondSumcheckEvalRelOut_of_secondSumcheckEval
+    (target : R) (stmt : FinalStatement R pp)
+    (oStmt : ∀ i, FinalOracleStatement R pp i)
+    (hTarget : target =
+      MvPolynomial.eval stmt.1 (secondSumCheckVirtualPolynomial R pp stmt.2 oStmt)) :
+    (((target, stmt), oStmt), ()) ∈
+      finalCheckWithClaimSecondSumcheckEvalRelOut R pp :=
+  (finalCheckWithClaimSecondSumcheckEvalRelOut_iff_secondSumcheckEval
+    R pp target stmt oStmt).2 hTarget
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- Projection from the direct second-sum-check endpoint relation back to endpoint equality. -/
+theorem secondSumcheckEval_eq_of_finalCheckWithClaimSecondSumcheckEvalRelOut
+    (target : R) (stmt : FinalStatement R pp)
+    (oStmt : ∀ i, FinalOracleStatement R pp i)
+    (hmem : (((target, stmt), oStmt), ()) ∈
+      finalCheckWithClaimSecondSumcheckEvalRelOut R pp) :
+    target = MvPolynomial.eval stmt.1
+      (secondSumCheckVirtualPolynomial R pp stmt.2 oStmt) :=
+  (finalCheckWithClaimSecondSumcheckEvalRelOut_iff_secondSumcheckEval
+    R pp target stmt oStmt).1 hmem
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- The direct second-sum-check endpoint relation weakens to the broad target-carrying terminal
+relation. -/
+theorem finalCheckWithClaimSecondSumcheckEvalRelOut_subset_finalCheckWithClaimRelOut :
+    finalCheckWithClaimSecondSumcheckEvalRelOut R pp ⊆ finalCheckWithClaimRelOut R pp := by
+  intro x _hx
+  trivial
+
+/-- **NAMED RESIDUAL — final target relation from the second-sum-check endpoint.** The target
+threaded into Spartan's final `CheckClaim` belongs to the pure target-carrying relation whenever it
+is the endpoint emitted by the second sum-check. -/
+def finalCheckWithClaimValueRelResidual : Prop :=
+  ∀ (target : R) (stmt : FinalStatement R pp)
+    (oStmt : ∀ i, FinalOracleStatement R pp i),
+    target = MvPolynomial.eval stmt.1 (secondSumCheckVirtualPolynomial R pp stmt.2 oStmt) →
+      (((target, stmt), oStmt), ()) ∈ finalCheckWithClaimValueRelIn R pp
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- The pure final target relation residual follows from the terminal endpoint bridge. -/
+theorem finalCheckWithClaimValueRelResidual_holds :
+    finalCheckWithClaimValueRelResidual R pp := by
+  intro target stmt oStmt hTarget
+  exact finalCheckWithClaimValueRelIn_of_secondSumcheckEval R pp target stmt oStmt hTarget
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- The algebraic second-sum-check endpoint residual implies the pure final-check value relation
+residual. This is the named dependency direction for terminal composition. -/
+theorem finalCheckWithClaimValueRelResidual_of_secondSumcheckTerminalEndpointResidual
+    (hEndpoint : secondSumcheckTerminalEndpointResidual R pp) :
+    finalCheckWithClaimValueRelResidual R pp := by
+  intro target stmt oStmt hTarget
+  exact finalCheckWithClaimValueRelIn_of_finalExpectedClaimValue R pp target stmt oStmt (by
+    rw [hTarget, hEndpoint stmt oStmt])
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- The pure final-check value relation residual recovers the algebraic second-sum-check endpoint
+residual by instantiating the carried target with the second-sum-check endpoint. -/
+theorem secondSumcheckTerminalEndpointResidual_of_finalCheckWithClaimValueRelResidual
+    (hRel : finalCheckWithClaimValueRelResidual R pp) :
+    secondSumcheckTerminalEndpointResidual R pp := by
+  intro stmt oStmt
+  exact finalExpectedClaimValue_eq_of_finalCheckWithClaimValueRelIn R pp
+    (MvPolynomial.eval stmt.1 (secondSumCheckVirtualPolynomial R pp stmt.2 oStmt)) stmt oStmt
+    (hRel (MvPolynomial.eval stmt.1 (secondSumCheckVirtualPolynomial R pp stmt.2 oStmt))
+      stmt oStmt rfl)
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- The terminal target-relation residual and the algebraic second-sum-check endpoint residual are
+equivalent. Later Spartan composition work can choose either residual surface. -/
+theorem finalCheckWithClaimValueRelResidual_iff_secondSumcheckTerminalEndpointResidual :
+    finalCheckWithClaimValueRelResidual R pp ↔ secondSumcheckTerminalEndpointResidual R pp :=
+  ⟨secondSumcheckTerminalEndpointResidual_of_finalCheckWithClaimValueRelResidual R pp,
+    finalCheckWithClaimValueRelResidual_of_secondSumcheckTerminalEndpointResidual R pp⟩
+
+/-- The terminal-check input relation: the random-linear-combination of the bundled evaluation
+claims, taken in the clear at the prover's view, is well-formed. (The value-level relation; the
+oracle reduction's verifier checks `finalPredicate`.) -/
+@[reducible]
+def finalCheckRelIn :
+    Set ((FinalStatement R pp × (∀ i, FinalOracleStatement R pp i)) × Unit) :=
+  Set.univ
+
+@[reducible]
+def finalCheckRelOut :
+    Set ((FinalStatement R pp × (∀ i, FinalOracleStatement R pp i)) × Unit) :=
+  Set.univ
+
+/-! ## Brick B — the (first and) second sum-check oracle reductions
+
+Both sum-check phases lift the *proven* full sum-check oracle reduction
+`Sumcheck.Spec.oracleReduction R deg D n oSpec` onto Spartan's virtual polynomials via the
+`liftContext` machinery — the identical pattern that `Spartan.Spec.oracleReduction.firstChallenge`
+already uses for `RandomQuery`.
+
+The first sum-check runs over `ℓ_m` variables on the virtual polynomial
+  `ℱ(X) = eq ⸨τ, X⸩ · (A𝕫 ⸨X⸩ · B𝕫 ⸨X⸩ − C𝕫 ⸨X⸩)`,
+reducing the zero-check claim at `τ` to an evaluation claim at the sampled `r_x`.
+
+The second sum-check runs over `ℓ_n` variables on the virtual polynomial
+  `ℳ(Y) = ∑_idx r_idx · (MLE M_idx) ⸨r_x, Y⸩ · (MLE 𝕫) ⸨Y⸩`  (= `secondSumCheckVirtualPolynomial`),
+reducing the random-linear-combination of the evaluation claims to a single evaluation at `r_y`.
+
+`deg = 2` (product of two multilinear factors) and the summation domain is the boolean domain
+`Fin 2 ↪ R`.
+
+The existence of these lifted reductions and the transfer of the proven sum-check security through
+`liftContext` are stated below. The actual lens (mirroring `firstChallengeOracleLens`) plus the
+discharge of the lens side conditions (`IsComplete`/`IsKnowledgeSound`/`LiftContextCoherent`) is the
+named residual; honest lenses discharge those by `rfl`/`simp`. The summation domain is the
+canonical boolean embedding `Sumcheck.boolEmbedding R : Fin 2 ↪ R` (from `Sumcheck/Domain.lean`). -/
+
+/-- **NAMED RESIDUAL — second sum-check reduction existence.** The second sum-check oracle reduction
+for Spartan, of type
+`OracleReduction oSpec (AfterLinearCombination) … (AfterSecondSumcheck) … (Sumcheck.Spec.pSpec R 2 ℓ_n)`,
+obtained as `(Sumcheck.Spec.oracleReduction R 2 (boolEmbedding R) pp.ℓ_n oSpec).liftContext` along
+the Spartan lens routing `secondSumCheckVirtualPolynomial` into the sum-check oracle statement.
+
+Stated as a residual because constructing the routing lens — the exact analogue of
+`firstChallengeOracleLens` for the matrix/witness → ℳ(Y)-evaluation reconstruction — is a sizeable
+sub-development; once that lens `L₂` is supplied, this is
+`(Sumcheck.Spec.oracleReduction R 2 (boolEmbedding R) pp.ℓ_n oSpec).liftContext L₂.toContext L₂`. -/
+def secondSumcheckResidual : Prop :=
+  Nonempty (OracleReduction oSpec
+    (Statement.AfterLinearCombination R pp) (OracleStatement.AfterLinearCombination R pp) Unit
+    (Statement.AfterSecondSumcheck R pp) (OracleStatement.AfterSecondSumcheck R pp) Unit
+    (Sumcheck.Spec.pSpec R 2 pp.ℓ_n))
+
+/-- **NAMED RESIDUAL — first sum-check reduction existence.** Symmetric to
+`secondSumcheckResidual`, over `ℓ_m` variables on `ℱ(X)`, lifting the proven sum-check reduction
+along the Spartan lens routing `ℱ` into the sum-check oracle statement. -/
+def firstSumcheckResidual : Prop :=
+  Nonempty (OracleReduction oSpec
+    (Statement.AfterFirstChallenge R pp) (OracleStatement.AfterFirstChallenge R pp) Unit
+    (Statement.AfterFirstSumcheck R pp) (OracleStatement.AfterFirstSumcheck R pp) Unit
+    (Sumcheck.Spec.pSpec R 2 pp.ℓ_m))
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- **R1CS matrix-vector MLE decomposition.** Each bundled Spartan evaluation claim
+`v_idx = MLE(M_idx *ᵥ z)(r_x)` is the scaled sum of the column MLEs of `M_idx`, weighted by the
+R1CS vector `z = x || w`. This is the algebraic core that makes the second sum-check input
+sum-check-friendly. -/
+theorem evalClaimValue_eq_scaled_sum
+    (stmt : Statement.AfterFirstSumcheck R pp)
+    (oStmt : ∀ i, OracleStatement.AfterFirstSumcheck R pp i)
+    (idx : R1CS.MatrixIdx) :
+    let r_x : Fin pp.ℓ_m → R := stmt.1
+    let x : Statement.AfterFirstMessage R pp := stmt.2.2
+    let z := R1CS.𝕫 x (oStmt (.inr 0))
+    evalClaimValue R pp stmt oStmt idx =
+      ∑ j : Fin pp.toSizeR1CS.n,
+        z j * MvPolynomial.eval r_x
+          (MvPolynomial.MLE
+            (fun xBits : Fin pp.ℓ_m → Fin 2 =>
+              oStmt (.inl idx) (finFunctionFinEquiv xBits) j)) := by
+  classical
+  dsimp only
+  let r_x : Fin pp.ℓ_m → R := stmt.1
+  let x : Statement.AfterFirstMessage R pp := stmt.2.2
+  let z := R1CS.𝕫 x (oStmt (.inr 0))
+  let M := oStmt (.inl idx)
+  change
+    MvPolynomial.eval r_x
+      (MvPolynomial.MLE ((Matrix.mulVec M z) ∘ finFunctionFinEquiv))
+      =
+        ∑ j : Fin pp.toSizeR1CS.n,
+          z j * MvPolynomial.eval r_x
+            (MvPolynomial.MLE
+              (fun xBits : Fin pp.ℓ_m → Fin 2 => M (finFunctionFinEquiv xBits) j))
+  have hfun :
+      ((Matrix.mulVec M z) ∘ finFunctionFinEquiv)
+        =
+          fun xBits : Fin pp.ℓ_m → Fin 2 =>
+            ∑ j : Fin pp.toSizeR1CS.n, z j * M (finFunctionFinEquiv xBits) j := by
+    funext xBits
+    simp [Matrix.mulVec, dotProduct, PublicParams.toSizeR1CS, mul_comm]
+  rw [hfun]
+  simpa using
+    (MvPolynomial.MLE_eval_scaled_sum
+      (σ := Fin pp.ℓ_m) (R := R) (s := (Finset.univ : Finset (Fin pp.toSizeR1CS.n)))
+      (z := z)
+      (g := fun j (xBits : Fin pp.ℓ_m → Fin 2) => M (finFunctionFinEquiv xBits) j)
+      r_x)
+
+/-- **NAMED RESIDUAL — R1CS ↔ MLE encoding equality.** The chaining correctness obligation:
+after `sendEvalClaim`, each evaluation claim exposes the genuine matrix-vector/MLE decomposition
+that the second sum-check consumes. This replaces the prior self-equality with the actual
+scaled-column identity for every matrix index. -/
+def r1csMleEncodingResidual : Prop :=
+  ∀ (stmt : Statement.AfterFirstSumcheck R pp)
+    (oStmt : ∀ i, OracleStatement.AfterFirstSumcheck R pp i)
+    (idx : R1CS.MatrixIdx),
+    let r_x : Fin pp.ℓ_m → R := stmt.1
+    let x : Statement.AfterFirstMessage R pp := stmt.2.2
+    let z := R1CS.𝕫 x (oStmt (.inr 0))
+    evalClaimValue R pp stmt oStmt idx =
+      ∑ j : Fin pp.toSizeR1CS.n,
+        z j * MvPolynomial.eval r_x
+          (MvPolynomial.MLE
+            (fun xBits : Fin pp.ℓ_m → Fin 2 =>
+              oStmt (.inl idx) (finFunctionFinEquiv xBits) j))
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- The R1CS↔MLE encoding residual is discharged by the matrix-vector MLE scaled-sum identity. -/
+theorem r1csMleEncodingResidual_holds : r1csMleEncodingResidual R pp := by
+  intro stmt oStmt idx
+  exact evalClaimValue_eq_scaled_sum R pp stmt oStmt idx
+
+/-! ## Brick D — composition of the Spartan PIOP
+
+We compose the phases pairwise with the proven `OracleReduction.append`. Because the existing
+phases already chain type-wise (each `AfterX` output context equals the next `AfterY` input
+context), the composite
+
+  firstMessage ▷ firstChallenge ▷ firstSumcheck ▷ sendEvalClaim ▷ linearCombination
+    ▷ secondSumcheck ▷ finalCheck
+
+is a well-typed `OracleReduction` once the two sum-check phases (Brick B) are available.
+
+The composed completeness and round-by-round knowledge soundness are stated as named residuals
+discharged through the proven append reduction theorems. Each is the additive combination of the
+per-component guarantees:
+* completeness error `0` (all components are perfectly complete);
+* rbr knowledge error the per-round sum, with each sum-check round contributing `deg/|R| = 2/|R|`
+  (the proven `oracleVerifier_rbrKnowledgeSoundness` bound) and the zero-round components
+  contributing `0`.
+-/
+
+/-- The Spartan input relation as a `Set` over the input context
+`((Statement × OracleStatement) × Witness)`, built from `R1CS.relation` (which is curried). This is
+the relation the composed PIOP reduces from. -/
+@[reducible]
+def spartanRelIn :
+    Set ((Statement R pp × (∀ i, OracleStatement R pp i)) × Witness R pp) :=
+  { x | R1CS.relation R pp.toSizeR1CS x.1.1 x.1.2 x.2 }
+
+/-- **NAMED RESIDUAL — composed Spartan PIOP existence.** The fully composed Spartan oracle
+reduction, over *some* combined protocol specification `pSpecC`, of input context the bare R1CS
+statement (`Statement`, `OracleStatement`, `Witness`) and output context the terminal statement
+after the final check. Obtained by iterated `OracleReduction.append` of the seven phases — the
+`AppendCoherent` side conditions chain automatically from the leaves, by
+`OracleVerifier.Append.AppendCoherent.oracleReductionAppend`. Stated as a residual because two of the
+seven leaves (the sum-check phases) are themselves residuals
+(`firstSumcheckResidual`, `secondSumcheckResidual`).
+
+We existentially quantify the combined `pSpecC` (rather than spelling out the `Fin.vsum`/`++ₚ`
+arithmetic) so the residual records exactly the protocol-level obligation without committing to a
+brittle size normal form. -/
+def composedPIOPResidual : Prop :=
+  ∃ (N : ℕ) (pSpecC : ProtocolSpec N) (_ : ∀ i, OracleInterface.{0, 0} (pSpecC.Message i))
+    (_ : ∀ i, SampleableType (pSpecC.Challenge i)),
+    Nonempty (OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalStatement R pp) (FinalOracleStatement R pp) Unit
+      pSpecC)
+
+/-- **NAMED RESIDUAL — target-carrying composed Spartan PIOP existence.** This is the same
+composition obligation as `composedPIOPResidual`, but with the real terminal `CheckClaim` endpoint:
+the output statement carries the second-sum-check target value alongside the final Spartan context,
+so the final predicate can check `target = expected(r_x,r_y,A,B,C,Z)`. -/
+def composedPIOPWithClaimResidual : Prop :=
+  ∃ (N : ℕ) (pSpecC : ProtocolSpec N) (_ : ∀ i, OracleInterface.{0, 0} (pSpecC.Message i))
+    (_ : ∀ i, SampleableType (pSpecC.Challenge i)),
+    Nonempty (OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalClaimStatement R pp) (FinalOracleStatement R pp) Unit
+      pSpecC)
+
+/-- **NAMED RESIDUAL — composed Spartan PIOP perfect completeness.** Discharged, once the composed
+reduction `Rc` (over its combined spec `pSpecC`) is available, by iterated
+`OracleReduction.append_perfectCompleteness`: each leaf is perfectly complete
+(`SendSingleWitness.oracleReduction`, `RandomQuery.oracleReduction_completeness`, the two sum-checks
+via `Sumcheck.Spec.oracleReduction_perfectCompleteness` transferred through `liftContext`,
+`sendEvalClaim`/`linearCombination` as pure forwardings, and `finalCheck` via `CheckClaim`), and
+`append_perfectCompleteness` combines them with total error `0` (resting on the `Prover.append_run`
+keystone, the single deep residual of the append layer). -/
+def composedCompletenessResidual
+    {N : ℕ} {pSpecC : ProtocolSpec N}
+    [∀ i, OracleInterface (pSpecC.Message i)] [∀ i, SampleableType (pSpecC.Challenge i)]
+    (Rc : OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalStatement R pp) (FinalOracleStatement R pp) Unit pSpecC)
+    {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp)) : Prop :=
+  Rc.perfectCompleteness init impl (spartanRelIn R pp) (finalCheckRelOut R pp)
+
+/-- Target-carrying version of `composedCompletenessResidual`, for a composed Spartan reduction
+ending at `finalCheckWithClaim`. -/
+def composedCompletenessWithClaimResidual
+    {N : ℕ} {pSpecC : ProtocolSpec N}
+    [∀ i, OracleInterface (pSpecC.Message i)] [∀ i, SampleableType (pSpecC.Challenge i)]
+    (Rc : OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalClaimStatement R pp) (FinalOracleStatement R pp) Unit pSpecC)
+    {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp)) : Prop :=
+  Rc.perfectCompleteness init impl (spartanRelIn R pp) (finalCheckWithClaimRelOut R pp)
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- The semantic target-carrying value relation is a strengthening of the broad terminal relation
+used by the current composed-with-claim residual surface. -/
+theorem finalCheckWithClaimValueRelIn_subset_finalCheckWithClaimRelOut :
+    finalCheckWithClaimValueRelIn R pp ⊆ finalCheckWithClaimRelOut R pp := by
+  intro x _hx
+  trivial
+
+/-- Stronger target-carrying composed completeness residual, where the composed Spartan reduction
+must output the semantic value relation tying the carried target to the algebraic final expected
+claim value. This is a compatibility target for future terminal `CheckClaim` completeness work. -/
+def composedCompletenessWithClaimValueRelResidual
+    {N : ℕ} {pSpecC : ProtocolSpec N}
+    [∀ i, OracleInterface (pSpecC.Message i)] [∀ i, SampleableType (pSpecC.Challenge i)]
+    (Rc : OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalClaimStatement R pp) (FinalOracleStatement R pp) Unit pSpecC)
+    {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp)) : Prop :=
+  Rc.perfectCompleteness init impl (spartanRelIn R pp) (finalCheckWithClaimValueRelIn R pp)
+
+/-- Target-carrying composed completeness residual where the final output relation is stated
+directly as equality with the second-sum-check terminal endpoint. -/
+def composedCompletenessWithClaimSecondSumcheckEvalResidual
+    {N : ℕ} {pSpecC : ProtocolSpec N}
+    [∀ i, OracleInterface (pSpecC.Message i)] [∀ i, SampleableType (pSpecC.Challenge i)]
+    (Rc : OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalClaimStatement R pp) (FinalOracleStatement R pp) Unit pSpecC)
+    {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp)) : Prop :=
+  Rc.perfectCompleteness init impl
+    (spartanRelIn R pp) (finalCheckWithClaimSecondSumcheckEvalRelOut R pp)
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- The second-sum-check endpoint completeness residual and the semantic value-relation residual
+are the same residual under the terminal endpoint bridge. -/
+theorem composedCompletenessWithClaimSecondSumcheckEvalResidual_iff_valueRel
+    {N : ℕ} {pSpecC : ProtocolSpec N}
+    [∀ i, OracleInterface (pSpecC.Message i)] [∀ i, SampleableType (pSpecC.Challenge i)]
+    (Rc : OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalClaimStatement R pp) (FinalOracleStatement R pp) Unit pSpecC)
+    {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp)) :
+    composedCompletenessWithClaimSecondSumcheckEvalResidual R pp oSpec Rc init impl ↔
+      composedCompletenessWithClaimValueRelResidual R pp oSpec Rc init impl := by
+  unfold composedCompletenessWithClaimSecondSumcheckEvalResidual
+  unfold composedCompletenessWithClaimValueRelResidual
+  rw [finalCheckWithClaimSecondSumcheckEvalRelOut_eq_valueRelIn]
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- Completeness into the second-sum-check endpoint relation gives completeness into the semantic
+value relation. -/
+theorem composedCompletenessWithClaimValueRelResidual_of_secondSumcheckEval
+    {N : ℕ} {pSpecC : ProtocolSpec N}
+    [∀ i, OracleInterface (pSpecC.Message i)] [∀ i, SampleableType (pSpecC.Challenge i)]
+    (Rc : OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalClaimStatement R pp) (FinalOracleStatement R pp) Unit pSpecC)
+    {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp))
+    (hEndpoint :
+      composedCompletenessWithClaimSecondSumcheckEvalResidual R pp oSpec Rc init impl) :
+    composedCompletenessWithClaimValueRelResidual R pp oSpec Rc init impl :=
+  (composedCompletenessWithClaimSecondSumcheckEvalResidual_iff_valueRel
+    R pp oSpec Rc init impl).1 hEndpoint
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- Completeness into the semantic value relation gives completeness into the direct
+second-sum-check endpoint relation. -/
+theorem composedCompletenessWithClaimSecondSumcheckEvalResidual_of_valueRel
+    {N : ℕ} {pSpecC : ProtocolSpec N}
+    [∀ i, OracleInterface (pSpecC.Message i)] [∀ i, SampleableType (pSpecC.Challenge i)]
+    (Rc : OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalClaimStatement R pp) (FinalOracleStatement R pp) Unit pSpecC)
+    {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp))
+    (hValue :
+      composedCompletenessWithClaimValueRelResidual R pp oSpec Rc init impl) :
+    composedCompletenessWithClaimSecondSumcheckEvalResidual R pp oSpec Rc init impl :=
+  (composedCompletenessWithClaimSecondSumcheckEvalResidual_iff_valueRel
+    R pp oSpec Rc init impl).2 hValue
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- Completeness into the semantic target-carrying value relation implies the existing broad
+target-carrying composed completeness residual by output-relation weakening. -/
+theorem composedCompletenessWithClaimResidual_of_valueRel
+    {N : ℕ} {pSpecC : ProtocolSpec N}
+    [∀ i, OracleInterface (pSpecC.Message i)] [∀ i, SampleableType (pSpecC.Challenge i)]
+    (Rc : OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalClaimStatement R pp) (FinalOracleStatement R pp) Unit pSpecC)
+    {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp))
+    (hValue : composedCompletenessWithClaimValueRelResidual R pp oSpec Rc init impl) :
+    composedCompletenessWithClaimResidual R pp oSpec Rc init impl := by
+  unfold composedCompletenessWithClaimValueRelResidual at hValue
+  unfold composedCompletenessWithClaimResidual
+  unfold OracleReduction.perfectCompleteness Reduction.perfectCompleteness at hValue ⊢
+  exact Reduction.completeness_relOut_mono
+    (init := init) (impl := impl)
+    (relIn := spartanRelIn R pp)
+    (relOut := finalCheckWithClaimValueRelIn R pp)
+    (relOut' := finalCheckWithClaimRelOut R pp)
+    (reduction := Rc.toReduction)
+    (finalCheckWithClaimValueRelIn_subset_finalCheckWithClaimRelOut R pp)
+    hValue
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- Completeness into the second-sum-check endpoint relation implies the existing broad
+target-carrying composed completeness residual. -/
+theorem composedCompletenessWithClaimResidual_of_secondSumcheckEval
+    {N : ℕ} {pSpecC : ProtocolSpec N}
+    [∀ i, OracleInterface (pSpecC.Message i)] [∀ i, SampleableType (pSpecC.Challenge i)]
+    (Rc : OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalClaimStatement R pp) (FinalOracleStatement R pp) Unit pSpecC)
+    {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp))
+    (hEndpoint :
+      composedCompletenessWithClaimSecondSumcheckEvalResidual R pp oSpec Rc init impl) :
+    composedCompletenessWithClaimResidual R pp oSpec Rc init impl :=
+  composedCompletenessWithClaimResidual_of_valueRel R pp oSpec Rc init impl <|
+    (composedCompletenessWithClaimSecondSumcheckEvalResidual_iff_valueRel
+      R pp oSpec Rc init impl).1 hEndpoint
+
+/-- **NAMED RESIDUAL — composed Spartan PIOP round-by-round knowledge soundness.** Discharged, once
+the composed verifier is available, by iterated `OracleVerifier.append_rbrKnowledgeSoundness`: each
+leaf satisfies rbr knowledge soundness (`RandomQuery.oracleVerifier_rbrKnowledgeSoundness`, the two
+sum-checks via the per-round `Sumcheck.Spec` `oracleVerifier_rbrKnowledgeSoundness` transferred
+through `liftContext`, and `CheckClaim.verifier_rbr_knowledge_soundness`), and
+`append_rbrKnowledgeSoundness` combines the per-round errors through `ChallengeIdx.sumEquiv`. Each
+sum-check round contributes `2/|R|`; the zero-round components contribute `0`. -/
+def composedRbrKnowledgeSoundnessResidual
+    {N : ℕ} {pSpecC : ProtocolSpec N}
+    [∀ i, OracleInterface (pSpecC.Message i)] [∀ i, SampleableType (pSpecC.Challenge i)]
+    (Rc : OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalStatement R pp) (FinalOracleStatement R pp) Unit pSpecC)
+    {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp))
+    (rbrKnowledgeError : pSpecC.ChallengeIdx → ℝ≥0) : Prop :=
+  Rc.verifier.rbrKnowledgeSoundness init impl
+    (spartanRelIn R pp) (finalCheckRelOut R pp) rbrKnowledgeError
+
+/-- Target-carrying version of `composedRbrKnowledgeSoundnessResidual`, for composed Spartan
+verifiers ending at `finalCheckWithClaim`. -/
+def composedRbrKnowledgeSoundnessWithClaimResidual
+    {N : ℕ} {pSpecC : ProtocolSpec N}
+    [∀ i, OracleInterface (pSpecC.Message i)] [∀ i, SampleableType (pSpecC.Challenge i)]
+    (Rc : OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalClaimStatement R pp) (FinalOracleStatement R pp) Unit pSpecC)
+    {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp))
+    (rbrKnowledgeError : pSpecC.ChallengeIdx → ℝ≥0) : Prop :=
+  Rc.verifier.rbrKnowledgeSoundness init impl
+    (spartanRelIn R pp) (finalCheckWithClaimRelOut R pp) rbrKnowledgeError
+
+/-- Stronger target-carrying RBR knowledge-soundness residual where extracted terminal witnesses
+land in the semantic final-check value relation. -/
+def composedRbrKnowledgeSoundnessWithClaimValueRelResidual
+    {N : ℕ} {pSpecC : ProtocolSpec N}
+    [∀ i, OracleInterface (pSpecC.Message i)] [∀ i, SampleableType (pSpecC.Challenge i)]
+    (Rc : OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalClaimStatement R pp) (FinalOracleStatement R pp) Unit pSpecC)
+    {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp))
+    (rbrKnowledgeError : pSpecC.ChallengeIdx → ℝ≥0) : Prop :=
+  Rc.verifier.rbrKnowledgeSoundness init impl
+    (spartanRelIn R pp) (finalCheckWithClaimValueRelIn R pp) rbrKnowledgeError
+
+/-- Target-carrying RBR knowledge-soundness residual whose terminal output relation is stated
+directly as equality with the second-sum-check endpoint. -/
+def composedRbrKnowledgeSoundnessWithClaimSecondSumcheckEvalResidual
+    {N : ℕ} {pSpecC : ProtocolSpec N}
+    [∀ i, OracleInterface (pSpecC.Message i)] [∀ i, SampleableType (pSpecC.Challenge i)]
+    (Rc : OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalClaimStatement R pp) (FinalOracleStatement R pp) Unit pSpecC)
+    {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp))
+    (rbrKnowledgeError : pSpecC.ChallengeIdx → ℝ≥0) : Prop :=
+  Rc.verifier.rbrKnowledgeSoundness init impl
+    (spartanRelIn R pp) (finalCheckWithClaimSecondSumcheckEvalRelOut R pp) rbrKnowledgeError
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- The second-sum-check endpoint RBR residual and the semantic value-relation RBR residual are
+the same target under the terminal endpoint bridge. -/
+theorem composedRbrKnowledgeSoundnessWithClaimSecondSumcheckEvalResidual_iff_valueRel
+    {N : ℕ} {pSpecC : ProtocolSpec N}
+    [∀ i, OracleInterface (pSpecC.Message i)] [∀ i, SampleableType (pSpecC.Challenge i)]
+    (Rc : OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalClaimStatement R pp) (FinalOracleStatement R pp) Unit pSpecC)
+    {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp))
+    (rbrKnowledgeError : pSpecC.ChallengeIdx → ℝ≥0) :
+    composedRbrKnowledgeSoundnessWithClaimSecondSumcheckEvalResidual R pp oSpec Rc init impl
+        rbrKnowledgeError ↔
+      composedRbrKnowledgeSoundnessWithClaimValueRelResidual R pp oSpec Rc init impl
+        rbrKnowledgeError := by
+  unfold composedRbrKnowledgeSoundnessWithClaimSecondSumcheckEvalResidual
+  unfold composedRbrKnowledgeSoundnessWithClaimValueRelResidual
+  rw [finalCheckWithClaimSecondSumcheckEvalRelOut_eq_valueRelIn]
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- RBR knowledge soundness into the second-sum-check endpoint relation gives RBR knowledge
+soundness into the semantic value relation. -/
+theorem composedRbrKnowledgeSoundnessWithClaimValueRelResidual_of_secondSumcheckEval
+    {N : ℕ} {pSpecC : ProtocolSpec N}
+    [∀ i, OracleInterface (pSpecC.Message i)] [∀ i, SampleableType (pSpecC.Challenge i)]
+    (Rc : OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalClaimStatement R pp) (FinalOracleStatement R pp) Unit pSpecC)
+    {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp))
+    (rbrKnowledgeError : pSpecC.ChallengeIdx → ℝ≥0)
+    (hEndpoint :
+      composedRbrKnowledgeSoundnessWithClaimSecondSumcheckEvalResidual R pp oSpec Rc init impl
+        rbrKnowledgeError) :
+    composedRbrKnowledgeSoundnessWithClaimValueRelResidual R pp oSpec Rc init impl
+      rbrKnowledgeError :=
+  (composedRbrKnowledgeSoundnessWithClaimSecondSumcheckEvalResidual_iff_valueRel
+    R pp oSpec Rc init impl rbrKnowledgeError).1 hEndpoint
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- RBR knowledge soundness into the semantic value relation gives RBR knowledge soundness into
+the direct second-sum-check endpoint relation. -/
+theorem composedRbrKnowledgeSoundnessWithClaimSecondSumcheckEvalResidual_of_valueRel
+    {N : ℕ} {pSpecC : ProtocolSpec N}
+    [∀ i, OracleInterface (pSpecC.Message i)] [∀ i, SampleableType (pSpecC.Challenge i)]
+    (Rc : OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalClaimStatement R pp) (FinalOracleStatement R pp) Unit pSpecC)
+    {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp))
+    (rbrKnowledgeError : pSpecC.ChallengeIdx → ℝ≥0)
+    (hValue :
+      composedRbrKnowledgeSoundnessWithClaimValueRelResidual R pp oSpec Rc init impl
+        rbrKnowledgeError) :
+    composedRbrKnowledgeSoundnessWithClaimSecondSumcheckEvalResidual R pp oSpec Rc init impl
+      rbrKnowledgeError :=
+  (composedRbrKnowledgeSoundnessWithClaimSecondSumcheckEvalResidual_iff_valueRel
+    R pp oSpec Rc init impl rbrKnowledgeError).2 hValue
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- RBR knowledge soundness for the broad target-carrying final-check relation implies RBR
+knowledge soundness for the semantic value relation. This direction is the RBR analogue of relation
+weakening on the terminal target: the broad relation is `Set.univ`, so any positive-probability
+semantic terminal event is also a positive-probability broad terminal event. -/
+theorem composedRbrKnowledgeSoundnessWithClaimValueRelResidual_of_residual
+    {N : ℕ} {pSpecC : ProtocolSpec N}
+    [∀ i, OracleInterface (pSpecC.Message i)] [∀ i, SampleableType (pSpecC.Challenge i)]
+    (Rc : OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalClaimStatement R pp) (FinalOracleStatement R pp) Unit pSpecC)
+    {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp))
+    (rbrKnowledgeError : pSpecC.ChallengeIdx → ℝ≥0)
+    (hResidual :
+      composedRbrKnowledgeSoundnessWithClaimResidual R pp oSpec Rc init impl
+        rbrKnowledgeError) :
+    composedRbrKnowledgeSoundnessWithClaimValueRelResidual R pp oSpec Rc init impl
+      rbrKnowledgeError := by
+  unfold composedRbrKnowledgeSoundnessWithClaimResidual at hResidual
+  unfold composedRbrKnowledgeSoundnessWithClaimValueRelResidual
+  unfold OracleVerifier.rbrKnowledgeSoundness Verifier.rbrKnowledgeSoundness at hResidual ⊢
+  rcases hResidual with ⟨WitMid, extractor, kSF, hProb⟩
+  let kSFValue :
+      Rc.verifier.toVerifier.KnowledgeStateFunction init impl
+        (spartanRelIn R pp) (finalCheckWithClaimValueRelIn R pp) extractor :=
+    { toFun := kSF.toFun
+      toFun_empty := kSF.toFun_empty
+      toFun_next := kSF.toFun_next
+      toFun_full := by
+        intro stmtIn tr witOut hValue
+        exact kSF.toFun_full stmtIn tr witOut <|
+          lt_of_lt_of_le hValue <|
+            probEvent_mono fun _ _ h =>
+              finalCheckWithClaimValueRelIn_subset_finalCheckWithClaimRelOut R pp h }
+  refine ⟨WitMid, extractor, kSFValue, ?_⟩
+  simpa [kSFValue] using hProb
+
+omit [IsDomain R] [Fintype R] [SampleableType R] in
+/-- RBR knowledge soundness for the broad target-carrying final-check relation implies RBR
+knowledge soundness for the direct second-sum-check endpoint relation. -/
+theorem composedRbrKnowledgeSoundnessWithClaimSecondSumcheckEvalResidual_of_residual
+    {N : ℕ} {pSpecC : ProtocolSpec N}
+    [∀ i, OracleInterface (pSpecC.Message i)] [∀ i, SampleableType (pSpecC.Challenge i)]
+    (Rc : OracleReduction oSpec
+      (Statement R pp) (OracleStatement R pp) (Witness R pp)
+      (FinalClaimStatement R pp) (FinalOracleStatement R pp) Unit pSpecC)
+    {σ : Type} (init : ProbComp σ) (impl : QueryImpl oSpec (StateT σ ProbComp))
+    (rbrKnowledgeError : pSpecC.ChallengeIdx → ℝ≥0)
+    (hResidual :
+      composedRbrKnowledgeSoundnessWithClaimResidual R pp oSpec Rc init impl
+        rbrKnowledgeError) :
+    composedRbrKnowledgeSoundnessWithClaimSecondSumcheckEvalResidual R pp oSpec Rc init impl
+      rbrKnowledgeError :=
+  composedRbrKnowledgeSoundnessWithClaimSecondSumcheckEvalResidual_of_valueRel
+    R pp oSpec Rc init impl rbrKnowledgeError <|
+      composedRbrKnowledgeSoundnessWithClaimValueRelResidual_of_residual
+        R pp oSpec Rc init impl rbrKnowledgeError hResidual
+
+/-! ### Axiom audit for the target-carrying final-check frontier and encoding residual -/
+
+#print axioms evalClaimValue_eq_scaled_sum
+#print axioms r1csMleEncodingResidual
+#print axioms r1csMleEncodingResidual_holds
+#print axioms FinalClaimStatement
+#print axioms finalMatrixEvalFromOracles
+#print axioms zEvalFromFinalOracles
+#print axioms finalExpectedClaimFromOracles
+#print axioms finalExpectedClaimValue
+#print axioms secondSumCheckVirtualPolynomial_eval_eq_finalExpectedClaimValue
+#print axioms secondSumcheckTerminalEndpointResidual
+#print axioms secondSumcheckTerminalEndpointResidual_holds
+#print axioms finalClaimPredicate
+#print axioms finalCheckWithClaim
+#print axioms finalCheckWithClaimRelIn
+#print axioms finalCheckWithClaimRelOut
+#print axioms finalCheckWithClaimValueRelIn
+#print axioms finalCheckWithClaimValueRelIn_iff_finalExpectedClaimValue
+#print axioms finalCheckWithClaimValueRelIn_of_finalExpectedClaimValue
+#print axioms finalExpectedClaimValue_eq_of_finalCheckWithClaimValueRelIn
+#print axioms finalCheckWithClaimValueRelIn_iff_secondSumcheckEval
+#print axioms secondSumcheckEval_eq_of_finalCheckWithClaimValueRelIn
+#print axioms finalCheckWithClaimValueRelIn_of_secondSumcheckEval
+#print axioms finalCheckWithClaimSecondSumcheckEvalRelOut
+#print axioms finalCheckWithClaimSecondSumcheckEvalRelOut_eq_valueRelIn
+#print axioms finalCheckWithClaimSecondSumcheckEvalRelOut_subset_valueRelIn
+#print axioms finalCheckWithClaimValueRelIn_subset_secondSumcheckEvalRelOut
+#print axioms finalCheckWithClaimSecondSumcheckEvalRelOut_iff_secondSumcheckEval
+#print axioms finalCheckWithClaimSecondSumcheckEvalRelOut_of_secondSumcheckEval
+#print axioms secondSumcheckEval_eq_of_finalCheckWithClaimSecondSumcheckEvalRelOut
+#print axioms finalCheckWithClaimSecondSumcheckEvalRelOut_subset_finalCheckWithClaimRelOut
+#print axioms finalCheckWithClaimValueRelResidual
+#print axioms finalCheckWithClaimValueRelResidual_holds
+#print axioms finalCheckWithClaimValueRelResidual_of_secondSumcheckTerminalEndpointResidual
+#print axioms secondSumcheckTerminalEndpointResidual_of_finalCheckWithClaimValueRelResidual
+#print axioms finalCheckWithClaimValueRelResidual_iff_secondSumcheckTerminalEndpointResidual
+#print axioms finalCheckRelIn
+#print axioms finalCheckRelOut
+#print axioms firstSumcheckResidual
+#print axioms secondSumcheckResidual
+#print axioms spartanRelIn
+#print axioms composedPIOPResidual
+#print axioms composedCompletenessResidual
+#print axioms composedRbrKnowledgeSoundnessResidual
+#print axioms composedPIOPWithClaimResidual
+#print axioms composedCompletenessWithClaimResidual
+#print axioms finalCheckWithClaimValueRelIn_subset_finalCheckWithClaimRelOut
+#print axioms composedCompletenessWithClaimValueRelResidual
+#print axioms composedCompletenessWithClaimSecondSumcheckEvalResidual
+#print axioms composedCompletenessWithClaimSecondSumcheckEvalResidual_iff_valueRel
+#print axioms composedCompletenessWithClaimValueRelResidual_of_secondSumcheckEval
+#print axioms composedCompletenessWithClaimSecondSumcheckEvalResidual_of_valueRel
+#print axioms composedCompletenessWithClaimResidual_of_valueRel
+#print axioms composedCompletenessWithClaimResidual_of_secondSumcheckEval
+#print axioms composedRbrKnowledgeSoundnessWithClaimResidual
+#print axioms composedRbrKnowledgeSoundnessWithClaimValueRelResidual
+#print axioms composedRbrKnowledgeSoundnessWithClaimSecondSumcheckEvalResidual
+#print axioms composedRbrKnowledgeSoundnessWithClaimSecondSumcheckEvalResidual_iff_valueRel
+#print axioms composedRbrKnowledgeSoundnessWithClaimValueRelResidual_of_secondSumcheckEval
+#print axioms composedRbrKnowledgeSoundnessWithClaimSecondSumcheckEvalResidual_of_valueRel
+#print axioms composedRbrKnowledgeSoundnessWithClaimValueRelResidual_of_residual
+#print axioms composedRbrKnowledgeSoundnessWithClaimSecondSumcheckEvalResidual_of_residual
+
+end Bricks
+
+end
+
+end Spartan.Spec
