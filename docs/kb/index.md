@@ -33,6 +33,9 @@ used in `ArkLib/**/*.lean`, including:
 
 - [`concepts/interactive-oracle-proofs.md`](concepts/interactive-oracle-proofs.md) - how ArkLib's
   oracle-reduction abstractions relate to IOP terminology and references.
+- [`concepts/oracle-reductions.md`](concepts/oracle-reductions.md) - architecture of the IOR layer:
+  prover/verifier interaction, oracle verifiers and the `embed` mechanism, execution semantics,
+  security notions, and composition.
 - [`concepts/polishchuk-spielman-lineage.md`](concepts/polishchuk-spielman-lineage.md) - corrected
   versus original source lineage for the Polishchuk-Spielman lemma in ArkLib.
 - [`concepts/reed-solomon-proximity.md`](concepts/reed-solomon-proximity.md) - proximity gaps,

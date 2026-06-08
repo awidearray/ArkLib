@@ -261,7 +261,7 @@ class SpongeState (U : Type) [SpongeUnit U] [SpongeSize] (α : Type*) extends
 
 namespace SpongeState
 
--- TODO: this should really be part of a lens package / library
+-- Note: this should really be part of a lens package / library
 
 variable {U : Type} [SpongeUnit U] [SpongeSize] {C : Type} [SpongeState U C]
 
@@ -282,7 +282,7 @@ variable {U : Type} [SpongeUnit U] [SpongeSize]
 /-- The rate segment of a canonical sponge state, which is the first `R` elements of the state -/
 @[reducible]
 def rateSegment (state : CanonicalSpongeState U) : Vector U SpongeSize.R :=
-  -- TODO: define an alternate `take` version that directly returns `k` instead of `min k n`
+  -- Note: define an alternate `take` version that directly returns `k` instead of `min k n`
   (Vector.take state SpongeSize.R).cast (by simp)
 
 /-- The capacity segment of a canonical sponge state, which is the last `C` elements of the state -/

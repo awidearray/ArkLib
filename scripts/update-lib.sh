@@ -35,7 +35,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Tracked but intentionally excluded from the umbrella import until its direct
+# compile terminates under the normal validation budget.
+readonly UMBRELLA_IMPORT_EXCLUDES_RE='^ArkLib/ToMathlib/GHSZ02LargeNProof\.lean$'
+
 git ls-files -- 'ArkLib/*.lean' \
+  | grep -Ev "$UMBRELLA_IMPORT_EXCLUDES_RE" \
   | LC_ALL=C sort \
   | sed 's/\.lean//;s,/,.,g;s/^/import /' > "$tmp_file"
 

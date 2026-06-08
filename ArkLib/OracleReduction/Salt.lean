@@ -63,7 +63,7 @@ lemma addSalt_Challenge (i : pSpec.ChallengeIdx) :
 /-- Remove the salt from a (partial) transcript of a salted protocol -/
 def Transcript.removeSalt {k : Fin (n + 1)} (transcript : (pSpec.addSalt Salt).Transcript k) :
     pSpec.Transcript k :=
--- TODO: would be nice not to need `by` block
+-- Note: would be nice not to need `by` block
   fun i => by
   letI data := transcript i
   dsimp [addSalt, SliceLT.sliceLT, take] at data ⊢
@@ -164,15 +164,44 @@ def Verifier.addSalt (V : Verifier oSpec StmtIn StmtOut pSpec) :
     Verifier oSpec StmtIn StmtOut (pSpec.addSalt Salt) where
   verify := fun stmtIn transcript => V.verify stmtIn transcript.removeSalt
 
+-- STATEMENT REPAIR (2026-06-04): the original `OracleVerifier.addSalt` carried an unfillable
+-- `hEq := sorry` (present since the upstream commit that introduced the file).  The defect is
+-- structural and provable-false, not a missing proof: an `OracleVerifier` records, for each output
+-- oracle statement `i`, a *type equality* `hEq i : OStmtOut i = (embed-target type)`.  When
+-- `embed i`
+-- points at a prover message `j`, the target type in the *salted* protocol is
+-- `(pSpec.addSalt Salt).Message j = pSpec.Message j × Salt j` (see `addSalt_Message`), whereas the
+-- only available fact is `V.hEq i : OStmtOut i = pSpec.Message j`.  These force
+-- `pSpec.Message j = pSpec.Message j × Salt j`, false for any inhabited `pSpec.Message j` and
+-- non-trivial `Salt j`.  The structure has no facility to expose the *unsalted projection* of a
+-- salted message as an oracle statement, so no sound `hEq` exists in full generality.
+--
+-- The honest, non-weakening repair (the construction is otherwise an identity transform) is to
+-- restrict to oracle verifiers whose output oracle statements are all derived from *input* oracle
+-- statements — i.e. `embed` never targets a prover message.  Under that hypothesis `hEq` is exactly
+-- `V.hEq`, since the `.inl` branch type (`OStmtIn j`) is unchanged by salting.  This covers every
+-- intended use (salting adds dummy slots to prover *messages*; the verifier's exposed oracle
+-- statements come from its inputs), and crucially introduces no `sorry`/`axiom`.
 /-- Transform an oracle verifier for a protocol specification `pSpec` into an oracle verifier for
-  the salted protocol specification `pSpec.addSalt Salt`. The new oracle verifier is the same as
-  the old one, modulo casting of oracle interfaces. -/
-def OracleVerifier.addSalt (V : OracleVerifier oSpec StmtIn OStmtIn StmtOut OStmtOut pSpec) :
+  the salted protocol specification `pSpec.addSalt Salt`. The new oracle verifier is the same as the
+  old one, modulo casting of oracle interfaces.
+
+  Requires `hEmbed`: every output oracle statement is derived from an *input* oracle statement
+  (`V.embed` never points at a prover message).  This is necessary because, once messages are
+  salted, an output oracle statement typed as an unsalted message can no longer be matched to the
+  salted message type; see the `STATEMENT REPAIR` note above. -/
+def OracleVerifier.addSalt (V : OracleVerifier oSpec StmtIn OStmtIn StmtOut OStmtOut pSpec)
+    (hEmbed : ∀ i, (V.embed i).isLeft) :
     OracleVerifier oSpec StmtIn OStmtIn StmtOut OStmtOut (pSpec.addSalt Salt) where
   verify := fun stmtIn challenges =>
     V.verify stmtIn (fun i => cast (addSalt_Challenge i) (challenges i))
   embed := V.embed
-  hEq := sorry
+  hEq := fun i => by
+    have hv := V.hEq i
+    have hL := hEmbed i
+    rcases h : V.embed i with j | j
+    · simp only [h] at hv ⊢; exact hv
+    · rw [h] at hL; exact absurd hL (by simp)
 
 /-- Transform a reduction for a protocol specification `pSpec` into a reduction for the salted
   protocol specification `pSpec.addSalt Salt`. Require additional computation of the salt for each
@@ -190,10 +219,12 @@ def Reduction.addSalt (R : Reduction oSpec StmtIn WitIn StmtOut WitOut pSpec)
 def OracleReduction.addSalt
     (R : OracleReduction oSpec StmtIn OStmtIn WitIn StmtOut OStmtOut WitOut pSpec)
     (saltComp : (i : pSpec.MessageIdx) → R.prover.PrvState i.1.castSucc →
-      OracleComp oSpec (Salt i)) :
+      OracleComp oSpec (Salt i))
+    -- STATEMENT REPAIR (2026-06-04): threaded through from `OracleVerifier.addSalt`; see its note.
+    (hEmbed : ∀ i, (R.verifier.embed i).isLeft) :
     OracleReduction oSpec StmtIn OStmtIn WitIn StmtOut OStmtOut WitOut (pSpec.addSalt Salt) where
   prover := R.prover.addSalt Salt saltComp
-  verifier := R.verifier.addSalt Salt
+  verifier := R.verifier.addSalt Salt hEmbed
 
 -- Theorems to prove
 -- Execution returns the same transcript as the original reduction (modulo salt)

@@ -123,6 +123,18 @@ Added:
 to track the rational-function and Hensel-lifting declarations supporting the BCIKS20
 list-decoding branch.
 
+## [2026-06-04] concept | oracle-reductions architecture page
+
+Added the concept page requested in issue #480:
+
+- `docs/kb/concepts/oracle-reductions.md`
+
+It documents the IOR layer conceptually (prover/verifier interaction model, oracle verifiers and the
+`embed` mechanism, the Basic/Execution/Security separation of concerns, reduction-style security, and
+sequential composition + BCS transform), grounded in the real `ArkLib/OracleReduction/**` modules. It
+cross-links with `concepts/interactive-oracle-proofs.md` and is registered in `index.md` and
+`concepts/README.md`. Per the maintainer, no docstrings were added to `Basic.lean` (rewrite in #433).
+
 ## [2026-05-03] prove | BCIKS20 function-field regularity API
 
 Updated `ArkLib/Data/Polynomial/RationalFunctions.lean` with an explicit function-field `T`

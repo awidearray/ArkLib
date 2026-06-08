@@ -1,0 +1,42 @@
+# Pinned flagship declarations for the CI axiom sweep (scripts/axiom_audit.py).
+# Format: <module> <fully-qualified declaration>
+# Every declaration must report axioms within {propext, Classical.choice, Quot.sound}.
+# All names verified against source namespaces — a rename or deletion here is a
+# hard CI failure, not a skip (update this list in the same PR as the rename).
+
+# ── BCIKS20 correlated agreement keystone (curves + lines) ─────────────
+ArkLib.Data.CodingTheory.ProximityGap.BCIKS20.Curves ProximityGap.correlatedAgreement_affine_curves
+ArkLib.Data.CodingTheory.ProximityGap.BCIKS20.AffineLines.Main ProximityGap.RS_correlatedAgreement_affineLines
+
+# ── Proximity gap for RS codes ─────────────────────────────────────────
+ArkLib.Data.CodingTheory.ProximityGap.BCIKS20.ReedSolomonGap ProximityGap.proximity_gap_RSCodes
+
+# ── Grand-challenge collapse (kernel-proven refutation + collapse) ─────
+ArkLib.Data.CodingTheory.ProximityGap.GrandChallengeCollapse ProximityGap.not_listDecodingPrize
+ArkLib.Data.CodingTheory.ProximityGap.GrandChallengeCollapse ProximityGap.grandMCAChallenge_iff_epsMCA_one
+ArkLib.Data.CodingTheory.ProximityGap.GrandChallengesLattice ProximityGap.GrandChallengesLattice.mcaThreshold_spec
+
+# ── KZG commitment scheme ──────────────────────────────────────────────
+ArkLib.CommitmentScheme.KZG.Correctness KZG.CommitmentScheme.correctness
+ArkLib.CommitmentScheme.KZG.Binding KZG.CommitmentScheme.map_binding_to_t_sdh_of_two_valid_openings
+
+# ── Merkle tree extraction ─────────────────────────────────────────────
+ArkLib.CommitmentScheme.MerkleTree.Extraction InductiveMerkleTree.opening_binding
+ArkLib.CommitmentScheme.MerkleTree.Extraction InductiveMerkleTree.extracted_leaf_unique
+
+# ── Berlekamp-Welch decoder ────────────────────────────────────────────
+ArkLib.Data.CodingTheory.BerlekampWelch.BerlekampWelch BerlekampWelch.decoder_eq_some
+
+# ── Johnson bound ──────────────────────────────────────────────────────
+ArkLib.Data.CodingTheory.JohnsonBound.Basic JohnsonBound.johnson_condition_weak_implies_strong
+
+# ── Hensel existence ───────────────────────────────────────────────────
+ArkLib.Data.Polynomial.HenselExistence ProximityPrize.HenselExistence.exists_powerSeries_root
+
+# ── Guruswami-Sudan list-size bound ────────────────────────────────────
+ArkLib.Data.CodingTheory.GuruswamiSudan.ListSizeBound GSListSizeBound.gs_list_size_bound
+
+# ── BKR06 subspace polynomial + tight family ───────────────────────────
+ArkLib.Data.CodingTheory.ListDecoding.BKR06SubspacePoly BKR06.subspacePoly_natDegree
+ArkLib.ToMathlib.SubspacePolyLinearized BKR06.bkr06_tight_family_hfamily_unconditional
+ArkLib.Data.CodingTheory.ListDecoding.Bounds CodingTheory.large_alphabet_barrier_bdg24_agl23

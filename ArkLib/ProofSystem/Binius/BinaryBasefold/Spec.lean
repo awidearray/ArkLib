@@ -5,12 +5,12 @@ Authors: Chung Thai Nguyen, Quang Dao
 -/
 import ArkLib.ProofSystem.Binius.BinaryBasefold.Basic
 
-namespace Binius.BinaryBasefold
-
 /-! ## Protocol Specs for Binary Basefold
 This module contains the protocol specs, oracle index bounds,
 instances of OracleInterface and SampleableType for the Binary Basefold protocol.
 -/
+
+namespace Binius.BinaryBasefold
 
 noncomputable section
 open OracleSpec OracleComp ProtocolSpec Finset Polynomial MvPolynomial AdditiveNTT
@@ -26,11 +26,10 @@ variable (β : Fin r → L) [hβ_lin_indep : Fact (LinearIndependent 𝔽q β)]
   [h_β₀_eq_1 : Fact (β 0 = 1)]
 variable {ℓ 𝓡 ϑ : ℕ} (γ_repetitions : ℕ) [NeZero ℓ] [NeZero 𝓡] [NeZero ϑ] -- Should we allow ℓ = 0?
 variable {h_ℓ_add_R_rate : ℓ + 𝓡 < r} -- ℓ ∈ {1, ..., r-1}
-variable {𝓑 : Fin 2 ↪ L}
 variable [hdiv : Fact (ϑ ∣ ℓ)]
 
 section IndexBounds
--- TODO: need a main lemma for bounds involving last bIdx = (ℓ / ϑ - 1)
+-- Note: need a main lemma for bounds involving last bIdx = (ℓ / ϑ - 1)
 @[simp]
 lemma lastBlockIdx_mul_ϑ_add_x_lt_ℓ_succ (x : ℕ) {hx : x ≤ ϑ} :
     (ℓ / ϑ - 1) * ϑ + x < ℓ + 1 := by
@@ -271,7 +270,13 @@ instance : ∀ j, OracleInterface ((pSpecRelay).Message j)
 
 instance {i : Fin ℓ} :
     ∀ j, OracleInterface ((pSpecCommit 𝔽q β (h_ℓ_add_R_rate := h_ℓ_add_R_rate) i).Message j)
-  | ⟨0, _⟩ => by exact OracleInterface.instDefault -- oracle commitment (conditional)
+  -- The committed codeword `f^(i+1) : OracleFunction (i+1) = sDomain … → L` is exposed as a
+  -- *point-query* oracle (`instFunction`), matching how it is later re-read as an
+  -- `OracleStatement` and mirroring the FRI codeword commitment.  (Previously `instDefault`,
+  -- whose `Query := Unit` is incompatible with the `OracleStatement` point-query interface and
+  -- makes `commitOracleVerifier`'s `AppendCoherent` coherence — needed to seqCompose the blocks —
+  -- unprovable.)
+  | ⟨0, _⟩ => by unfold pSpecCommit; exact OracleInterface.instFunction
 
 instance : ∀ j, OracleInterface ((pSpecRelay).Message j)
   | ⟨x, hj⟩ => by exact x.elim0

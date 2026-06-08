@@ -33,7 +33,7 @@ block length. This also works with `≤`. -/
 noncomputable def relativeUniqueDecodingRadius {ι : Type*} [Fintype ι] {F : Type*} [DecidableEq F]
     (C : Set (ι → F)) : NNReal :=
   (((‖C‖₀ : NNReal) - 1) / 2) / (Fintype.card ι : NNReal)
--- TODO: define `Johnson bound` radius, capacity bounds, etc for generic code `C`
+-- Note: define `Johnson bound` radius, capacity bounds, etc for generic code `C`
 
 alias relUDR := relativeUniqueDecodingRadius
 

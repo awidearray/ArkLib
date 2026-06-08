@@ -1,7 +1,18 @@
+/-
+Copyright (c) 2026 ArkLib Contributors. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: ArkLib Contributors
+-/
 import Mathlib.Algebra.BigOperators.Fin
 
 /-!
-# More lemmas about `Fin` and big operators
+# Algebraic properties of interval-restricted products over finite domains
+
+This module establishes additional algebraic properties of big operators (products and sums)
+evaluated over interval subsets of `Fin (n + 1)`. Specifically, we formalize the compatibility
+of products over intervals of the form `Iio i`, `Iic i`, `Ici i` with the algebraic operations
+of restriction, extension, and successor mappings. These lemmas serve as core arithmetic
+machinery for inductive arguments over finite index structures.
 -/
 
 namespace Fin
@@ -11,19 +22,6 @@ section Interval
 open Finset
 
 variable {M : Type*} [CommMonoid M] {n : ℕ} {v : Fin (n + 1) → M}
-
--- @[to_additive]
--- theorem prod_Ioi_zero : ∏ i ∈ Ioi 0, v i = ∏ j : Fin n, v j.succ := by simp
---   -- rw [Ioi_zero_eq_map, Finset.prod_map, val_succEmb]
-
--- @[to_additive]
--- theorem prod_Ioi_succ (i : Fin n) : ∏ j ∈ Ioi i.succ, v j = ∏ j ∈ Ioi i, v j.succ := by
---   rw [Ioi_succ, Finset.prod_map, val_succEmb]
-
--- @[to_additive]
--- theorem prod_Ici_succ (i : Fin n) :
---     ∏ j ∈ Ici i.succ, v j = ∏ j ∈ Ici i, v j.succ := by
---   rw [Ici_succ, Finset.prod_map, val_succEmb]
 
 @[to_additive]
 theorem prod_Iio_succ (i : Fin n) :

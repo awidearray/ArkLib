@@ -1,3 +1,8 @@
+/-
+Copyright (c) 2025 ArkLib Contributors. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: ArkLib Contributors
+-/
 import Mathlib.LinearAlgebra.Lagrange
 import ArkLib.Data.Polynomial.SplitFold
 import CompPoly.Univariate.Lagrange
@@ -40,7 +45,7 @@ value `(foldNth n f γ).eval (s₀^n)`. This establishes that the Lagrange inter
 the evaluation points matches the n-way folding operation at the challenge point.
 -/
 lemma generalised_round_consistency_completeness
-  {𝔽 : Type} [inst1 : Field 𝔽] [DecidableEq 𝔽] {f : Polynomial 𝔽}
+    {𝔽 : Type} [inst1 : Field 𝔽] [DecidableEq 𝔽] {f : Polynomial 𝔽}
   {n : ℕ} [inst : NeZero n]
   {γ : 𝔽}
   {s₀ : 𝔽}
@@ -73,7 +78,6 @@ lemma generalised_round_consistency_completeness
     ext i
     rw [eval_mul]
     simp
-
   apply Eq.trans (b := eval γ <| ∑ i : Fin n, X ^ (↑i : ℕ) * C (eval (s₀ ^ n) (f.splitNth n i)))
   · rw [Lagrange.eq_interpolate (ι := Fin n)
         (v := fun i => ω i * s₀)

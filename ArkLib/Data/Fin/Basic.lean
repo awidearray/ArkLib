@@ -96,6 +96,30 @@ theorem induction_two' {motive : Fin 3 → Sort*} {zero : motive 0}
     {succ : ∀ i : Fin 2, motive i.castSucc → motive i.succ} :
       induction (motive := motive) zero succ (2 : Fin 3) = succ 1 (succ 0 zero) := by rfl
 
+@[simp]
+theorem induction_three {motive : Fin 4 → Sort*} {zero : motive 0}
+    {succ : ∀ i : Fin 3, motive i.castSucc → motive i.succ} :
+      induction (motive := motive) zero succ (last 3) = succ 2 (succ 1 (succ 0 zero)) := rfl
+
+/-- Alternate version of `Fin.induction_three` that uses `3 : Fin 4` instead of `last 3`. -/
+@[simp]
+theorem induction_three' {motive : Fin 4 → Sort*} {zero : motive 0}
+    {succ : ∀ i : Fin 3, motive i.castSucc → motive i.succ} :
+      induction (motive := motive) zero succ (3 : Fin 4) = succ 2 (succ 1 (succ 0 zero)) := by rfl
+
+@[simp]
+theorem induction_four {motive : Fin 5 → Sort*} {zero : motive 0}
+    {succ : ∀ i : Fin 4, motive i.castSucc → motive i.succ} :
+      induction (motive := motive) zero succ (last 4) =
+        succ 3 (succ 2 (succ 1 (succ 0 zero))) := rfl
+
+/-- Alternate version of `Fin.induction_four` that uses `4 : Fin 5` instead of `last 4`. -/
+@[simp]
+theorem induction_four' {motive : Fin 5 → Sort*} {zero : motive 0}
+    {succ : ∀ i : Fin 4, motive i.castSucc → motive i.succ} :
+      induction (motive := motive) zero succ (4 : Fin 5) =
+        succ 3 (succ 2 (succ 1 (succ 0 zero))) := by rfl
+
 /-- Heterogeneous equality on `Fin.induction` -/
 theorem induction_heq {n n' : ℕ} {motive : Fin (n + 1) → Sort u} {motive' : Fin (n' + 1) → Sort u}
     {zero : motive 0} {zero' : motive' 0}
@@ -287,35 +311,45 @@ section Sum
 
 -- Append multiple `Fin` tuples?
 
-def castSum (l : List ℕ) {n : ℕ} (h : n ∈ l) : Fin n → Fin l.sum := fun i =>
-  match l with
-  | [] => by contradiction
-  | n' :: l' => by
-    simp only [List.sum_cons]
-    by_cases hi : n = n'
-    · exact castAdd l'.sum (Fin.cast hi i)
-    · exact natAdd n' (castSum l' (List.mem_of_ne_of_mem hi h) i)
+/-- Embed `Fin (l.get k)` into `Fin l.sum` at the `k`-th block. Indexing is **positional**
+(`k : Fin l.length`): the previous membership-based design (`n ∈ l`) collapsed duplicate
+lengths (e.g. for `l = [2, 2]` both occurrences embedded into the head block, leaving the
+tail block unreachable), which did not support the accompanying eliminator. -/
+def castSum : (l : List ℕ) → (k : Fin l.length) → Fin (l.get k) → Fin l.sum
+  | _ :: l', ⟨0, _⟩, i => castAdd l'.sum i
+  | n' :: l', ⟨k + 1, hk⟩, i =>
+      natAdd n' (castSum l' ⟨k, Nat.succ_lt_succ_iff.mp hk⟩ i)
 
 theorem castSum_castLT {l' : List ℕ} {i : ℕ} (j : Fin i) :
-    castSum (i :: l') (by simp) j =
+    castSum (i :: l') ⟨0, by simp⟩ j =
       castLT j (Nat.lt_of_lt_of_le j.isLt (List.le_sum_of_mem (by simp))) := by
   simp [castSum, castAdd, castLE, castLT]
 
-theorem castSum_castAdd {n m : ℕ} (i : Fin n) : castSum [n, m] (by simp) i = castAdd m i := by
+theorem castSum_castAdd {n m : ℕ} (i : Fin n) :
+    castSum [n, m] ⟨0, by simp⟩ i = castAdd m i := by
   simp [castSum]
 
+/-- Dependent elimination for `Fin l.sum`: every index lies in exactly one positional block
+`castSum l k i`. -/
 def sumCases {l : List ℕ} {motive : Fin l.sum → Sort*}
-    (cases : ∀ (n : ℕ) (h : n ∈ l) (i : Fin n), motive (castSum l h i))
-    (i : Fin l.sum) : motive i := match l with
-  | [] => by simp only [List.sum_nil] at i; exact elim0 i
-  | n' :: l' => by
-    simp only [List.sum_cons] at i
-    by_cases hi : i < n'
-    · convert cases n' (by simp) ⟨i.val, hi⟩
-      simp [castSum]
-    · have hj' : i.val - n' < l'.sum := by omega
-      sorry
-      -- refine sumCases (l := l') (motive := motive ∘ natAdd i') ?_ ⟨j.val - i', hj'⟩
+    (cases : ∀ (k : Fin l.length) (i : Fin (l.get k)), motive (castSum l k i))
+    (i : Fin l.sum) : motive i :=
+  match l, motive, cases, i with
+  | [], _, _, i => elim0 i
+  | n' :: l', motive, cases, i =>
+    if hi : i.val < n' then
+      have heq : castSum (n' :: l') ⟨0, by simp⟩ ⟨i.val, hi⟩ = i := Fin.ext rfl
+      heq ▸ cases ⟨0, by simp⟩ ⟨i.val, hi⟩
+    else
+      have hsum : i.val < n' + l'.sum := by
+        have h := i.isLt; simp only [List.sum_cons] at h; exact h
+      have hj' : i.val - n' < l'.sum := by omega
+      have ih := sumCases (l := l') (motive := fun j => motive (natAdd n' j))
+        (fun k j => cases ⟨k.val + 1, Nat.succ_lt_succ k.isLt⟩ j)
+        ⟨i.val - n', hj'⟩
+      have heq : natAdd n' (⟨i.val - n', hj'⟩ : Fin l'.sum) = i := by
+        apply Fin.ext; simp [natAdd]; omega
+      heq ▸ ih
 
 end Sum
 

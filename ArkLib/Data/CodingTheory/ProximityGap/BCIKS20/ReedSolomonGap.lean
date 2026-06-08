@@ -8,14 +8,13 @@ Authors: Quang Dao, Katerina Hristova, František Silváši, Julian Sutherland,
 import ArkLib.Data.CodingTheory.ProximityGap.BCIKS20.AffineSpaces
 import ArkLib.Data.CodingTheory.ProximityGap.BCIKS20.ErrorBound
 import ArkLib.Data.Probability.Notation
-/-! # BCIKS20 Reed-Solomon Proximity Gaps -/
 
+/-! # BCIKS20 Reed-Solomon Proximity Gaps -/
 
 namespace ProximityGap
 
-open NNReal Finset Function ProbabilityTheory
+open NNReal Finset Function ProbabilityTheory Code
 open scoped BigOperators LinearCode ProbabilityTheory
-open Code
 
 section CoreResults
 
@@ -37,6 +36,11 @@ theorem proximity_gap_RSCodes {k t : ℕ} [NeZero k] [NeZero t] {deg : ℕ} {dom
     (hRS : deg + 1 ≤ Fintype.card ι)
     (C : Fin t → (Fin k → (ι → F))) {δ : ℝ≥0}
     (_hδ_pos : 0 < δ)
+    -- [BCIKS20] §5: strict Johnson-branch coefficient-polynomial extraction residual,
+    -- specialized to the `k = 1` affine line and quantified over every radius `δ' ≤ δ`,
+    -- as required by `correlatedAgreement_affine_spaces` (Theorem 1.7).
+    (hStrictCoeff : ∀ δ' : ℝ≥0, δ' ≤ δ →
+      ProximityGap.StrictCoeffPolysResidual (k := 1) (deg := deg) (domain := domain) (δ := δ'))
     (hδ : δ < 1 - ReedSolomon.sqrtRate deg domain)
     (hε : errorBound δ deg domain < 1) :
     δ_ε_proximityGap
@@ -226,7 +230,8 @@ theorem proximity_gap_RSCodes {k t : ℕ} [NeZero k] [NeZero t] {deg : ℕ} {dom
       -- Apply Thm 1.7 at k := m + 1 to get jointAgreement (W := u').
       have hja_u' : jointAgreement (C := (ReedSolomon.code domain deg : Set (ι → F)))
           (δ := δ) (W := u') :=
-        correlatedAgreement_affine_spaces (k := m + 1) hdeg _hδ_pos hδ hRS hε u' hPr_aff
+        correlatedAgreement_affine_spaces (k := m + 1) hdeg _hδ_pos hStrictCoeff
+          hδ hRS hε u' hPr_aff
       -- Convert jointAgreement (W := u') → jointAgreement (W := C i).
       -- Witnesses: v_0 for C i 0 stays, v_{j+1} + v_0 ∈ RS.code (submodule closure)
       -- agrees with C i (j+1) on S because v_{j+1} agrees with u'(j+1) = C i (j+1) - C i 0
@@ -250,6 +255,38 @@ theorem proximity_gap_RSCodes {k t : ℕ} [NeZero k] [NeZero t] {deg : ℕ} {dom
           simp only [u', hj0, ite_false, Pi.sub_apply] at hv'j
           rw [Finset.mem_filter]
           exact ⟨Finset.mem_univ _, by rw [Pi.add_apply, hv'j, hv'0, sub_add_cancel]⟩
+
+/-- Theorem 1.2 front door with the affine-line Johnson residual supplied by the verified
+`betaRec` capsule at every radius `δ' ≤ δ` needed by the affine-space argument. -/
+theorem proximity_gap_RSCodes_johnson_of_betaRec {k t : ℕ} [NeZero k] [NeZero t]
+    {deg : ℕ} {domain : ι ↪ F}
+    (hdeg : 0 < deg)
+    (hRS : deg + 1 ≤ Fintype.card ι)
+    (C : Fin t → (Fin k → (ι → F))) {δ : ℝ≥0}
+    (hδ_pos : 0 < δ)
+    (hInput : ∀ δ' : ℝ≥0, δ' ≤ δ →
+      ∀ (_hk : 0 < 1) (u : WordStack F (Fin 2) ι),
+        Pr_{
+          let z ← $ᵖ F}[δᵣ(∑ t : Fin 2, (z ^ (t : ℕ)) • u t,
+            ReedSolomon.code domain deg) ≤ δ'] >
+            (((1 : ℕ) : ENNReal) * (errorBound δ' deg domain : ENNReal)) →
+        (1 - (LinearCode.rate (ReedSolomon.code domain deg) : ℝ≥0)) / 2 < δ' →
+        δ' < 1 - ReedSolomon.sqrtRate deg domain →
+        ArkLib.KeystoneStrictResidual.BetaCurveInput
+          (k := 1) (deg := deg) (domain := domain) (δ := δ') u)
+    (hδ : δ < 1 - ReedSolomon.sqrtRate deg domain)
+    (hε : errorBound δ deg domain < 1) :
+    δ_ε_proximityGap
+      (ReedSolomon.toFinset domain deg)
+      (Affine.AffSpanFinsetCollection C)
+      δ
+      (errorBound δ deg domain) :=
+  proximity_gap_RSCodes (ι := ι) (F := F) (k := k) (t := t) (deg := deg)
+    (domain := domain) hdeg hRS C hδ_pos
+    (fun δ' hδ'_le =>
+      ArkLib.KeystoneStrictResidual.strictCoeffPolysResidual_of_betaRec
+        (k := 1) (deg := deg) (domain := domain) (δ := δ') (hInput δ' hδ'_le))
+    hδ hε
 
 end CoreResults
 

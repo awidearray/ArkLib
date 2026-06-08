@@ -269,6 +269,20 @@ def projectedCode [Fintype ι] (C : Set (ι → F)) (T : Finset ι) : Set (T →
 
 notation:60 C "|[" T "]" => projectedCode C T
 
+/-- Let `T` be a finite subset of `ι`. If every word in a collection lies in the projected code
+`C|[T]`, then so do all `F`-linear combinations of these. -/
+lemma projectedCode_linearCombination [Field F] (LC : LinearCode ι F) (T : Finset ι) {α : Type}
+    [Fintype α] (U : α → (ι → F)) (c : α → F)
+    (hU : ∀ j, projectedWord (U j) T ∈ projectedCode LC.carrier T) :
+    projectedWord (fun k => ∑ j, c j * U j k) T ∈ projectedCode LC.carrier T := by
+  obtain ⟨w, hw⟩ : ∃ w ∈ LC, ∀ t ∈ T, w t = ∑ j, c j * U j t := by
+    choose w hw using hU
+    use ∑ j, c j • w j
+    exact ⟨Submodule.sum_mem _ fun j _ => Submodule.smul_mem _ _ (hw j |>.1),
+      fun t ht => by simp [show ∀ j, U j t = w j t from
+        fun j => congr_fun (hw j |>.2) ⟨t, ht⟩]⟩
+  exact ⟨w, hw.1, funext fun t => by simpa using Eq.symm (hw.2 t t.2)⟩
+
 /-- A linear code is maximum distance separable (MDS) if its parameters meet the singleton bound. -/
 def IsMDS {ι : Type} [Fintype ι] [CommRing F] [DecidableEq F] (LC : LinearCode ι F) : Prop :=
   Code.dist LC.carrier = length LC - dim LC + 1
@@ -387,7 +401,7 @@ noncomputable def genMatrixCols [Field F] (LC : LinearCode ι F) :
 /-- The dimension of a linear code equals the rank of its associated generator matrix.
 -/
 lemma rank_eq_dim_fromColGenMat [CommRing F] {G : Matrix κ ι F} :
-  G.rank = dim (fromColGenMat G) := rfl
+    G.rank = dim (fromColGenMat G) := rfl
 
 end
 
@@ -613,6 +627,50 @@ def moduleCodeDist' {F A} {ι} [Fintype ι] [Semiring F] [Fintype A] [DecidableE
   Finset.min <| ((Finset.univ (α := MC)).filter (fun v => v ≠ 0)).image (fun v => hammingNorm v.1)
 
 end Computable
+
+/-- **Bridge: `IsMDS` ↔ rate-distance form.** The `IsMDS` predicate (defined upstream in
+this file as the additive Nat form `Code.dist LC.carrier = length LC - dim LC + 1`) is
+equivalent to the rate-distance form `δ_min(LC) / n = 1 - ρ + 1/n` where `ρ = k/n` is
+the rate. The latter is the form ABF26 uses throughout §2-§3 (Lemma 2.6, Corollary 3.3).
+
+Requires `[Nonempty ι]` so `(Fintype.card ι : ℝ) ≠ 0`. -/
+lemma IsMDS_iff_rate_distance
+    {ι : Type} [Fintype ι] [Nonempty ι]
+    {F : Type} [Field F] [DecidableEq F]
+    (LC : LinearCode ι F) :
+    IsMDS LC ↔
+      (Code.minDist ((LC : Set (ι → F))) : ℝ) / Fintype.card ι =
+        1 - (Module.finrank F LC : ℝ) / Fintype.card ι + 1 / Fintype.card ι := by
+  have hn_pos : (0 : ℝ) < (Fintype.card ι : ℝ) := by exact_mod_cast Fintype.card_pos
+  have hn_ne : (Fintype.card ι : ℝ) ≠ 0 := ne_of_gt hn_pos
+  have hk_le : Module.finrank F LC ≤ Fintype.card ι := by
+    have := Submodule.finrank_le (R := F) (M := ι → F) LC
+    simpa [Module.finrank_fintype_fun_eq_card] using this
+  unfold IsMDS
+  rw [Code.dist_eq_minDist]
+  constructor
+  · intro h
+    have h' : (Code.minDist ((LC : Set (ι → F))) : ℝ) =
+        (Fintype.card ι : ℝ) - (Module.finrank F LC : ℝ) + 1 := by
+      have h1 : (length LC - dim LC + 1 : ℕ) = (Fintype.card ι - Module.finrank F LC + 1 : ℕ) :=
+        rfl
+      rw [h1] at h
+      have : ((Code.minDist (LC : Set (ι → F)) : ℕ) : ℝ) =
+          ((Fintype.card ι - Module.finrank F LC + 1 : ℕ) : ℝ) := by exact_mod_cast h
+      rw [Nat.cast_add, Nat.cast_sub hk_le, Nat.cast_one] at this
+      linarith
+    field_simp
+    linarith
+  · intro h
+    have h' : (Code.minDist ((LC : Set (ι → F))) : ℝ) =
+        (Fintype.card ι : ℝ) - (Module.finrank F LC : ℝ) + 1 := by
+      have := (div_eq_iff hn_ne).mp h
+      field_simp at this; linarith
+    have : ((Code.minDist (LC : Set (ι → F)) : ℕ) : ℝ) =
+        ((Fintype.card ι - Module.finrank F LC + 1 : ℕ) : ℝ) := by
+      rw [Nat.cast_add, Nat.cast_sub hk_le, Nat.cast_one]
+      exact h'
+    exact_mod_cast this
 
 end LinearCode
 

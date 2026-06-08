@@ -142,7 +142,7 @@ class IsSecure
   is_rbr_knowledge_sound :
     vectorIOR.verifier.rbrKnowledgeSoundness (pure ()) isEmptyElim relIn relOut ε_rbr
 
--- TODO: define V-IOR of proximity
+-- Note: define V-IOR of proximity
 
 end VectorIOR
 

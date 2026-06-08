@@ -137,6 +137,60 @@ def soundness
     return (stmtIn, stmtOut))).run' (← init)
   ] ≤ srSoundnessError
 
+omit [DecidableEq StmtIn] [∀ i, DecidableEq (pSpec.Message i)]
+  [∀ i, DecidableEq (pSpec.Challenge i)] in
+/-- State-restoration soundness is monotone in the allowed soundness error. -/
+theorem soundness.mono_error
+    {langIn : Set StmtIn} {langOut : Set StmtOut}
+    {verifier : Verifier oSpec StmtIn StmtOut pSpec}
+    {srSoundnessError₁ srSoundnessError₂ : ENNReal}
+    (hSound : soundness init impl langIn langOut verifier srSoundnessError₁)
+    (hle : srSoundnessError₁ ≤ srSoundnessError₂) :
+    soundness init impl langIn langOut verifier srSoundnessError₂ := by
+  intro srProver
+  exact le_trans (hSound srProver) hle
+
+omit [DecidableEq StmtIn] [∀ i, DecidableEq (pSpec.Message i)]
+  [∀ i, DecidableEq (pSpec.Challenge i)] in
+/-- State-restoration soundness is monotone under enlarging the honest input language and shrinking
+the accepting output language. -/
+theorem soundness.mono_languages
+    {langIn langIn' : Set StmtIn} {langOut langOut' : Set StmtOut}
+    {verifier : Verifier oSpec StmtIn StmtOut pSpec}
+    {srSoundnessError : ENNReal}
+    (hSound : soundness init impl langIn langOut verifier srSoundnessError)
+    (hIn : langIn ⊆ langIn') (hOut : langOut' ⊆ langOut) :
+    soundness init impl langIn' langOut' verifier srSoundnessError := by
+  intro srProver
+  refine le_trans ?_ (hSound srProver)
+  exact probEvent_mono fun event _ hevent => by
+    rcases event with ⟨stmtIn, stmtOut?⟩
+    cases stmtOut? with
+    | none => exact False.elim hevent
+    | some stmtOut =>
+        exact ⟨hOut hevent.1, fun hmem => hevent.2 (hIn hmem)⟩
+
+omit [DecidableEq StmtIn] [∀ i, DecidableEq (pSpec.Message i)]
+  [∀ i, DecidableEq (pSpec.Challenge i)] in
+/-- State-restoration soundness can simultaneously transport languages and relax the target
+soundness error. -/
+theorem soundness.mono_languages_error
+    {langIn langIn' : Set StmtIn} {langOut langOut' : Set StmtOut}
+    {verifier : Verifier oSpec StmtIn StmtOut pSpec}
+    {srSoundnessError₁ srSoundnessError₂ : ENNReal}
+    (hSound : soundness init impl langIn langOut verifier srSoundnessError₁)
+    (hIn : langIn ⊆ langIn') (hOut : langOut' ⊆ langOut)
+    (hle : srSoundnessError₁ ≤ srSoundnessError₂) :
+    soundness init impl langIn' langOut' verifier srSoundnessError₂ := by
+  intro srProver
+  refine le_trans ?_ (le_trans (hSound srProver) hle)
+  exact probEvent_mono fun event _ hevent => by
+    rcases event with ⟨stmtIn, stmtOut?⟩
+    cases stmtOut? with
+    | none => exact False.elim hevent
+    | some stmtOut =>
+        exact ⟨hOut hevent.1, fun hmem => hevent.2 (hIn hmem)⟩
+
 /-- State-restoration knowledge soundness (w/ straightline extractor). -/
 def knowledgeSoundness
     (relIn : Set (StmtIn × WitIn)) (relOut : Set (StmtOut × WitOut))
@@ -144,15 +198,82 @@ def knowledgeSoundness
     (srKnowledgeSoundnessError : ENNReal) : Prop :=
   ∃ srExtractor : Extractor.StateRestoration oSpec StmtIn WitIn WitOut pSpec,
   ∀ srProver : Prover.StateRestoration.KnowledgeSoundness oSpec StmtIn WitOut pSpec,
-    Pr[ fun | ⟨stmtIn, witIn, some stmtOut, witOut⟩ => (stmtOut, witOut) ∈ relOut ∧ (stmtIn, witIn) ∉ relIn | _ => False
+    Pr[ fun | ⟨stmtIn, witIn, some stmtOut, witOut⟩ =>
+              (stmtOut, witOut) ∈ relOut ∧ (stmtIn, witIn) ∉ relIn
+            | _ => False
     | do
       (simulateQ (impl.addLift srChallengeQueryImpl' : QueryImpl _ (StateT _ ProbComp))
           <| (do
             let ⟨transcript, stmtIn, witOut⟩ ← srKnowledgeSoundnessGame srProver
             let stmtOut ← liftComp (verifier.run stmtIn transcript) _
+            -- The state-restoration game currently supplies default query logs; a strengthened SR
+            -- game can thread the actual prover/verifier logs through this call.
             let witIn ← srExtractor stmtIn witOut transcript default default
             return (stmtIn, witIn, stmtOut, witOut))).run' (← init)
     ] ≤ srKnowledgeSoundnessError
+
+omit [DecidableEq StmtIn] [∀ i, DecidableEq (pSpec.Message i)]
+  [∀ i, DecidableEq (pSpec.Challenge i)] in
+/-- State-restoration knowledge soundness is monotone in the allowed knowledge-soundness error. -/
+theorem knowledgeSoundness.mono_error
+    {relIn : Set (StmtIn × WitIn)} {relOut : Set (StmtOut × WitOut)}
+    {verifier : Verifier oSpec StmtIn StmtOut pSpec}
+    {srKnowledgeSoundnessError₁ srKnowledgeSoundnessError₂ : ENNReal}
+    (hSound : knowledgeSoundness init impl relIn relOut verifier srKnowledgeSoundnessError₁)
+    (hle : srKnowledgeSoundnessError₁ ≤ srKnowledgeSoundnessError₂) :
+    knowledgeSoundness init impl relIn relOut verifier srKnowledgeSoundnessError₂ := by
+  obtain ⟨srExtractor, hSound⟩ := hSound
+  exact ⟨srExtractor, fun srProver => le_trans (hSound srProver) hle⟩
+
+omit [DecidableEq StmtIn] [∀ i, DecidableEq (pSpec.Message i)]
+  [∀ i, DecidableEq (pSpec.Challenge i)] in
+/-- State-restoration knowledge soundness is monotone under enlarging the valid input relation and
+shrinking the valid output relation. -/
+theorem knowledgeSoundness.mono_relations
+    {relIn relIn' : Set (StmtIn × WitIn)} {relOut relOut' : Set (StmtOut × WitOut)}
+    {verifier : Verifier oSpec StmtIn StmtOut pSpec}
+    {srKnowledgeSoundnessError : ENNReal}
+    (hSound : knowledgeSoundness init impl relIn relOut verifier srKnowledgeSoundnessError)
+    (hIn : relIn ⊆ relIn') (hOut : relOut' ⊆ relOut) :
+    knowledgeSoundness init impl relIn' relOut' verifier srKnowledgeSoundnessError := by
+  obtain ⟨srExtractor, hSound⟩ := hSound
+  refine ⟨srExtractor, fun srProver => ?_⟩
+  refine le_trans ?_ (hSound srProver)
+  exact probEvent_mono fun event _ hevent => by
+    rcases event with ⟨stmtIn, witIn, stmtOut?, witOut⟩
+    cases stmtOut? with
+    | none => exact False.elim hevent
+    | some stmtOut =>
+        exact ⟨hOut hevent.1, fun hmem => hevent.2 (hIn hmem)⟩
+
+omit [DecidableEq StmtIn] [∀ i, DecidableEq (pSpec.Message i)]
+  [∀ i, DecidableEq (pSpec.Challenge i)] in
+/-- State-restoration knowledge soundness can simultaneously transport relations and relax the
+target knowledge-soundness error. -/
+theorem knowledgeSoundness.mono_relations_error
+    {relIn relIn' : Set (StmtIn × WitIn)} {relOut relOut' : Set (StmtOut × WitOut)}
+    {verifier : Verifier oSpec StmtIn StmtOut pSpec}
+    {srKnowledgeSoundnessError₁ srKnowledgeSoundnessError₂ : ENNReal}
+    (hSound : knowledgeSoundness init impl relIn relOut verifier srKnowledgeSoundnessError₁)
+    (hIn : relIn ⊆ relIn') (hOut : relOut' ⊆ relOut)
+    (hle : srKnowledgeSoundnessError₁ ≤ srKnowledgeSoundnessError₂) :
+    knowledgeSoundness init impl relIn' relOut' verifier srKnowledgeSoundnessError₂ := by
+  obtain ⟨srExtractor, hSound⟩ := hSound
+  refine ⟨srExtractor, fun srProver => ?_⟩
+  refine le_trans ?_ (le_trans (hSound srProver) hle)
+  exact probEvent_mono fun event _ hevent => by
+    rcases event with ⟨stmtIn, witIn, stmtOut?, witOut⟩
+    cases stmtOut? with
+    | none => exact False.elim hevent
+    | some stmtOut =>
+        exact ⟨hOut hevent.1, fun hmem => hevent.2 (hIn hmem)⟩
+
+#print axioms soundness.mono_error
+#print axioms soundness.mono_languages
+#print axioms soundness.mono_languages_error
+#print axioms knowledgeSoundness.mono_error
+#print axioms knowledgeSoundness.mono_relations
+#print axioms knowledgeSoundness.mono_relations_error
 
 end StateRestoration
 

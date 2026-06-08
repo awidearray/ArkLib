@@ -122,7 +122,7 @@ lemma ps_coprime_case_constant {F : Type} [Field F]
   have hdeg_prod (S : Finset F) (m : ℕ) :
       (∏ x ∈ S, (X - C x) ^ m).natDegree = m * S.card := by
     rw [natDegree_prod _ _ (fun x _ ↦ pow_ne_zero _ (X_sub_C_ne_zero x))]
-    simp [natDegree_pow, Finset.sum_const, smul_eq_mul, Nat.mul_comm]
+    simp [natDegree_pow, Finset.sum_const, Nat.nsmul_eq_mul, Nat.mul_comm]
   -- Upper bounds from resultant degree
   have hRY_le : RY.natDegree ≤ mY * b_x + mX * b_y := le_trans
     (by simpa [RY, hRY] using ps_nat_degree_resultant_le A B mY b_y)

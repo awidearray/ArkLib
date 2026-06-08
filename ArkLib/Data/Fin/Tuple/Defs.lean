@@ -150,7 +150,7 @@ Notation: `!v[]` or `!v⟨α⟩[]` with explicit type ascription. -/
 abbrev vempty {α : Sort*} : Fin 0 → α := Fin.elim0
 
 /-- Homogeneous cons: prepends `a : α` to a vector by specializing `dcons` to the
-constant-type motive `fun _ => α`.
+fixed-type motive `fun _ => α`.
 
 Notation: `a ::ᵛ v` (using standard `::` for vectors). -/
 def vcons {n : ℕ} (a : α) (v : Fin n → α) : Fin (n + 1) → α :=
@@ -162,7 +162,7 @@ def vcons {n : ℕ} (a : α) (v : Fin n → α) : Fin (n + 1) → α :=
   --   | ⟨k + 1, hk⟩ => v ⟨k, Nat.lt_of_succ_lt_succ hk⟩
 
 /-- Homogeneous snoc: appends `a : α` to the end of a vector by specializing `dconcat` to the
-constant-type motive `fun _ => α`.
+fixed-type motive `fun _ => α`.
 
 Notation: `v :+ᵛ a`. -/
 def vconcat {n : ℕ} (v : Fin n → α) (a : α) : Fin (n + 1) → α :=
@@ -172,7 +172,7 @@ def vconcat {n : ℕ} (v : Fin n → α) (a : α) : Fin (n + 1) → α :=
   -- | _ + 1 => vcons (v 0) (vconcat (v ∘ Fin.succ) a)
 
 /-- Homogeneous append: concatenates two vectors by specializing `dappend` to the
-constant-type motive `fun _ => α`.
+fixed-type motive `fun _ => α`.
 
 Notation: `u ++ᵛ v` or standard `u ++ v`. -/
 def vappend {m n : ℕ} {α : Sort*} (u : Fin m → α) (v : Fin n → α) : Fin (m + n) → α :=

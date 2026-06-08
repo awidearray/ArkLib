@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Quang Dao
 -/
 import ArkLib.OracleReduction.Security.RoundByRound
+import ArkLib.OracleReduction.Security.OracleZeroKnowledge
 
 /-!
   # Simple Oracle Reduction - SendClaim
@@ -17,7 +18,7 @@ import ArkLib.OracleReduction.Security.RoundByRound
      and the other is the message from the prover.
    - The output relation checks whether the two `OStatement`s are the same.
 
-   TODO: Generalize
+   Note: Generalize
 -/
 
 open OracleSpec OracleComp OracleQuery OracleInterface ProtocolSpec
@@ -29,6 +30,9 @@ variable {ι : Type} (oSpec : OracleSpec ι) (Statement : Type)
 
 @[reducible]
 def pSpec : ProtocolSpec 1 := ⟨!v[.P_to_V], !v[OStatement default]⟩
+
+instance : ∀ i, SampleableType ((pSpec OStatement).Challenge i)
+  | ⟨0, h⟩ => nomatch h
 
 /--
 The prover takes in the old oracle statement as input, and sends it as the protocol message.
@@ -82,7 +86,7 @@ def oracleVerifier : OracleVerifier oSpec Statement OStatement Unit (OStatement 
     intro i
     match i with
     | .inl _ => rfl
-    | .inr j => simp [ProtocolSpec.Message]; exact congrArg OStatement (Unique.uniq _ j)
+    | .inr j => simp only [ProtocolSpec.Message]; exact congrArg OStatement (Unique.uniq _ j)
 
 /--
 Combine the prover and verifier into an oracle reduction.
@@ -90,7 +94,7 @@ The input has no statement or witness, but one `OStatement`.
 The output is also no statement or witness, but two `OStatement`s.
 -/
 def oracleReduction : OracleReduction oSpec
-      Statement OStatement Unit
+    Statement OStatement Unit
       Unit (OStatement ⊕ᵥ OStatement) Unit (pSpec OStatement) where
   prover := oracleProver oSpec Statement OStatement
   verifier := oracleVerifier oSpec Statement OStatement relComp
@@ -236,5 +240,116 @@ theorem completeness [Nonempty σ] :
         subst hj; rfl
       }
   }⟩
+
+/-- The simulator for `SendClaim`: the component has no private witness, so the simulator can run
+the honest public execution on the input statement and the unique `Unit` witness. -/
+def transcriptSimulator :
+    OracleReduction.TranscriptSimulator oSpec Statement OStatement (pSpec OStatement) :=
+  fun stmtIn =>
+    Reduction.honestTranscriptDist init impl
+      (oracleReduction oSpec Statement OStatement relComp).toReduction stmtIn ()
+
+/-- The honest transcript distribution for `SendClaim` is exactly the simulator distribution,
+because the protocol has no private witness. -/
+theorem honestTranscriptDist_oracleReduction_evalDist
+    (stmt : Statement) (oStmt : ∀ i, OStatement i) :
+    evalDist (Reduction.honestTranscriptDist init impl
+        (oracleReduction oSpec Statement OStatement relComp).toReduction (stmt, oStmt) ()) =
+      evalDist (transcriptSimulator (oSpec := oSpec) (Statement := Statement)
+        (OStatement := OStatement) (relComp := relComp) (init := init) (impl := impl)
+        (stmt, oStmt)) := rfl
+
+/-- `SendClaim` is perfectly HVZK as an oracle reduction for any input relation: the protocol has
+no private witness, so the simulator can reproduce the honest transcript from public input. -/
+theorem oracleReduction_perfectHVZK :
+    OracleReduction.perfectHVZK init impl relIn
+      (oracleReduction oSpec Statement OStatement relComp)
+      (transcriptSimulator (oSpec := oSpec) (Statement := Statement)
+        (OStatement := OStatement) (relComp := relComp) (init := init) (impl := impl)) := by
+  intro ⟨stmt, oStmt⟩ () _
+  exact (honestTranscriptDist_oracleReduction_evalDist (oSpec := oSpec)
+    (Statement := Statement) (OStatement := OStatement) (init := init)
+    (impl := impl) (relComp := relComp) stmt oStmt).symm
+
+/-- Perfect HVZK implies statistical HVZK for `SendClaim` at every error budget. -/
+theorem oracleReduction_statisticalHVZK (ε : NNReal) :
+    OracleReduction.statisticalHVZK init impl relIn
+      (oracleReduction oSpec Statement OStatement relComp)
+      (transcriptSimulator (oSpec := oSpec) (Statement := Statement)
+        (OStatement := OStatement) (relComp := relComp) (init := init) (impl := impl)) ε :=
+  (oracleReduction_perfectHVZK (oSpec := oSpec) (Statement := Statement)
+    (OStatement := OStatement) (relIn := relIn) (relComp := relComp)
+    (init := init) (impl := impl)).statisticalHVZK ε
+
+/-- `SendClaim` has an explicit perfect-HVZK simulator as an oracle reduction. -/
+theorem oracleReduction_isHVZK :
+    OracleReduction.isHVZK init impl relIn
+      (oracleReduction oSpec Statement OStatement relComp) :=
+  ⟨transcriptSimulator (oSpec := oSpec) (Statement := Statement) (OStatement := OStatement)
+      (relComp := relComp) (init := init) (impl := impl),
+    oracleReduction_perfectHVZK (oSpec := oSpec) (Statement := Statement)
+      (OStatement := OStatement) (relIn := relIn) (relComp := relComp)
+      (init := init) (impl := impl)⟩
+
+/-- `SendClaim` has statistical HVZK at every error budget as an oracle reduction. -/
+theorem oracleReduction_isStatHVZK (ε : NNReal) :
+    OracleReduction.isStatHVZK init impl relIn
+      (oracleReduction oSpec Statement OStatement relComp) ε :=
+  (oracleReduction_isHVZK (oSpec := oSpec) (Statement := Statement)
+    (OStatement := OStatement) (relIn := relIn) (relComp := relComp)
+    (init := init) (impl := impl)).isStatHVZK ε
+
+/-- The underlying non-oracle reduction of `SendClaim` is perfectly HVZK. -/
+theorem oracleReduction_toReduction_perfectHVZK :
+    Reduction.perfectHVZK init impl relIn
+      (oracleReduction oSpec Statement OStatement relComp).toReduction
+      (transcriptSimulator (oSpec := oSpec) (Statement := Statement)
+        (OStatement := OStatement) (relComp := relComp) (init := init) (impl := impl)) :=
+  oracleReduction_perfectHVZK (oSpec := oSpec) (Statement := Statement)
+    (OStatement := OStatement) (relIn := relIn) (relComp := relComp)
+    (init := init) (impl := impl)
+
+/-- The underlying non-oracle reduction of `SendClaim` is statistically HVZK at every error
+budget. -/
+theorem oracleReduction_toReduction_statisticalHVZK (ε : NNReal) :
+    Reduction.statisticalHVZK init impl relIn
+      (oracleReduction oSpec Statement OStatement relComp).toReduction
+      (transcriptSimulator (oSpec := oSpec) (Statement := Statement)
+        (OStatement := OStatement) (relComp := relComp) (init := init) (impl := impl)) ε :=
+  oracleReduction_statisticalHVZK (oSpec := oSpec) (Statement := Statement)
+    (OStatement := OStatement) (relIn := relIn) (relComp := relComp)
+    (init := init) (impl := impl) ε
+
+/-- The underlying non-oracle reduction of `SendClaim` has an explicit perfect-HVZK simulator. -/
+theorem oracleReduction_toReduction_isHVZK :
+    Reduction.isHVZK init impl relIn
+      (oracleReduction oSpec Statement OStatement relComp).toReduction :=
+  ⟨transcriptSimulator (oSpec := oSpec) (Statement := Statement) (OStatement := OStatement)
+      (relComp := relComp) (init := init) (impl := impl),
+    oracleReduction_toReduction_perfectHVZK (oSpec := oSpec) (Statement := Statement)
+      (OStatement := OStatement) (relIn := relIn) (relComp := relComp)
+      (init := init) (impl := impl)⟩
+
+/-- The underlying non-oracle reduction of `SendClaim` has statistical HVZK at every error
+budget. -/
+theorem oracleReduction_toReduction_isStatHVZK (ε : NNReal) :
+    Reduction.isStatHVZK init impl relIn
+      (oracleReduction oSpec Statement OStatement relComp).toReduction ε :=
+  ⟨transcriptSimulator (oSpec := oSpec) (Statement := Statement) (OStatement := OStatement)
+      (relComp := relComp) (init := init) (impl := impl),
+    oracleReduction_toReduction_statisticalHVZK (oSpec := oSpec) (Statement := Statement)
+      (OStatement := OStatement) (relIn := relIn) (relComp := relComp)
+      (init := init) (impl := impl) ε⟩
+
+#print axioms SendClaim.transcriptSimulator
+#print axioms SendClaim.honestTranscriptDist_oracleReduction_evalDist
+#print axioms SendClaim.oracleReduction_perfectHVZK
+#print axioms SendClaim.oracleReduction_statisticalHVZK
+#print axioms SendClaim.oracleReduction_isHVZK
+#print axioms SendClaim.oracleReduction_isStatHVZK
+#print axioms SendClaim.oracleReduction_toReduction_perfectHVZK
+#print axioms SendClaim.oracleReduction_toReduction_statisticalHVZK
+#print axioms SendClaim.oracleReduction_toReduction_isHVZK
+#print axioms SendClaim.oracleReduction_toReduction_isStatHVZK
 
 end SendClaim

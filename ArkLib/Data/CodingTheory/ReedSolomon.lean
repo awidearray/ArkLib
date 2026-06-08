@@ -18,7 +18,7 @@ import Mathlib.Data.NNReal.Basic -- for instFloorSemiring of ℝ≥0
 /-!
 # Reed-Solomon Codes
 
-- The lemmas with suffix `'` (e.g. dim_eq_deg_of_le', minDist', ...) are generalizations of
+- The lemmas with suffix `'` (e.g. `dim_eq_deg_of_le'`, `minDist_eq'`, ...) are generalizations of
   their corresponding non-suffixed versions from `Fin m` index to arbitrary finite index type `ι`.
 
 ## References
@@ -50,11 +50,11 @@ def evalOnPointsRingHom [CommSemiring F] : F[X] →+* (ι → F) where
   map_mul'  := by aesop
 
 lemma evalOnPointsRingHom_eq_evalOnPoints [CommSemiring F] {p : F[X]} {domain : ι ↪ F} :
-  evalOnPointsRingHom domain p = evalOnPoints domain p := rfl
+    evalOnPointsRingHom domain p = evalOnPoints domain p := rfl
 
 @[simp]
 lemma evalOnPoints_mul [CommSemiring F] {domain : ι ↪ F} {p q : F[X]} :
-  evalOnPoints domain (p * q) = evalOnPoints domain p * evalOnPoints domain q := by
+    evalOnPoints domain (p * q) = evalOnPoints domain p * evalOnPoints domain q := by
   aesop (add unsafe (by rw [←evalOnPointsRingHom_eq_evalOnPoints]))
 
 /-- The Reed-Solomon code for polynomials of degree less than `deg` and evaluation points `domain`.
@@ -109,11 +109,11 @@ variable [Semiring F] {p : F[X]}
 
 @[simp]
 lemma evalOnPoints_C {domain : ι ↪ F} {a : F} :
-  evalOnPoints domain (Polynomial.C a) = fun _ ↦ a := by simp [evalOnPoints]
+    evalOnPoints domain (Polynomial.C a) = fun _ ↦ a := by simp [evalOnPoints]
 
 @[simp]
 lemma evalOnPoints_X {domain : ι ↪ F} :
-  evalOnPoints domain Polynomial.X = domain := by simp [evalOnPoints]
+    evalOnPoints domain Polynomial.X = domain := by simp [evalOnPoints]
 
 lemma natDegree_lt_of_mem_degreeLT [NeZero deg] (h : p ∈ degreeLT F deg) : p.natDegree < deg := by
   by_cases p = 0
@@ -162,7 +162,7 @@ section
 variable [Semiring F]
 
 lemma mem_code_of_polynomial_of_degree_lt_of_eval {n : ℕ} {α : ι ↪ F} {f : ι → F}
-  (p : Polynomial F)
+    (p : Polynomial F)
   (hdeg : p.degree < n) (heval : ∀ i, f i = p.eval (α i)) :
   f ∈ code α n := by
   aesop
@@ -171,7 +171,7 @@ lemma mem_code_of_polynomial_of_degree_lt_of_eval {n : ℕ} {α : ι ↪ F} {f :
                Polynomial.degree_lt_iff_coeff_zero])
 
 lemma mem_code_of_polynomial_of_natDegree_lt_of_eval {n : ℕ} {α : ι ↪ F} {f : ι → F}
-  (p : Polynomial F)
+    (p : Polynomial F)
   (hdeg : p.natDegree < n) (heval : ∀ i, f i = p.eval (α i)) :
   f ∈ code α n := by
   by_cases h0 : p = 0
@@ -181,7 +181,7 @@ lemma mem_code_of_polynomial_of_natDegree_lt_of_eval {n : ℕ} {α : ι ↪ F} {
     exact mem_code_of_polynomial_of_degree_lt_of_eval _ hdeg heval
 
 lemma mem_code_iff_exists_polynomial {n : ℕ} {α : ι ↪ F} {f : ι → F} :
-  f ∈ code α n ↔ ∃ p : Polynomial F, p.degree < n ∧ f = evalOnPoints α p := by
+    f ∈ code α n ↔ ∃ p : Polynomial F, p.degree < n ∧ f = evalOnPoints α p := by
   constructor <;>
     intro h <;>
     obtain ⟨p, h₁, h₂⟩ := h <;>
@@ -190,8 +190,28 @@ lemma mem_code_iff_exists_polynomial {n : ℕ} {α : ι ↪ F} {f : ι → F} :
             [Polynomial.degreeLT,
              Polynomial.degree_lt_iff_coeff_zero])
 
+/-- Transport a Reed-Solomon codeword across an equivalence of evaluation domains.
+
+The hypothesis `hα` says that the two evaluation embeddings select the same field point after
+reindexing by `e`. -/
+lemma codeword_equiv_of_eval_eq
+    {F ι₁ ι₂ : Type*} [Semiring F]
+    (e : ι₁ ≃ ι₂)
+    {α₁ : ι₁ ↪ F} {α₂ : ι₂ ↪ F}
+    (hα : ∀ x : ι₁, α₂ (e x) = α₁ x)
+    {deg : ℕ} {v : ι₁ → F}
+    (hv : v ∈ code α₁ deg) :
+    (fun y : ι₂ => v (e.symm y)) ∈ code α₂ deg := by
+  rw [mem_code_iff_exists_polynomial] at hv ⊢
+  rcases hv with ⟨p, hp_deg, hv_eval⟩
+  refine ⟨p, hp_deg, ?_⟩
+  ext y
+  have hy : α₂ y = α₁ (e.symm y) := by
+    simpa using hα (e.symm y)
+  simp [hv_eval, evalOnPoints, hy]
+
 lemma mem_code_iff_exists_polynomial_of_ne_zero {n : ℕ} [ne : NeZero n] {α : ι ↪ F} {f : ι → F} :
-  f ∈ code α n ↔ ∃ p : Polynomial F, p.natDegree < n ∧ f = evalOnPoints α p := by
+    f ∈ code α n ↔ ∃ p : Polynomial F, p.natDegree < n ∧ f = evalOnPoints α p := by
   rw [mem_code_iff_exists_polynomial]
   have hne := ne.out
   constructor <;>
@@ -216,6 +236,31 @@ lemma code_mono {n m : ℕ} (h : n ≤ m) (α : ι ↪ F) :
 @[simp]
 lemma code_zero (α : ι ↪ F) : code α 0 = ⊥ := by
   rw [code, Polynomial.degreeLT_zero, Submodule.map_bot]
+
+/-- **Reed-Solomon codeword transport across a domain reindexing.**
+
+If two evaluation embeddings agree up to a coordinate equivalence `e`
+(`domain₁ x = domain₂ (e x)`), then reindexing any `domain₁`-codeword along `e.symm` yields a
+`domain₂`-codeword of the same degree bound.
+
+A codeword is the evaluation vector of a fixed polynomial of degree `< n`; relabelling the
+evaluation points by a bijection that matches the points pointwise leaves it the evaluation
+vector of the *same* polynomial, hence still a codeword.  This supplies the Reed-Solomon-specific
+`hC` hypothesis consumed by `Code.jointAgreement_equiv_of_codeword_transport`, which is the lift
+of joint agreement from one evaluation domain to an equivalent one (e.g. from `ω.subdomain 0`
+to `ω` in the FRI/STIR Claim 8.3 accounting). -/
+theorem code_reindex_mem {ι₁ ι₂ : Type*} (e : ι₁ ≃ ι₂)
+    {domain₁ : ι₁ ↪ F} {domain₂ : ι₂ ↪ F} {n : ℕ}
+    (hdom : ∀ x, domain₁ x = domain₂ (e x))
+    {f : ι₁ → F} (hf : f ∈ code domain₁ n) :
+    (fun y => f (e.symm y)) ∈ code domain₂ n := by
+  rw [mem_code_iff_exists_polynomial] at hf
+  obtain ⟨p, hdeg, rfl⟩ := hf
+  refine mem_code_of_polynomial_of_degree_lt_of_eval p hdeg (fun y => ?_)
+  show evalOnPoints domain₁ p (e.symm y) = p.eval (domain₂ y)
+  have hev : evalOnPoints domain₁ p (e.symm y) = p.eval (domain₁ (e.symm y)) := by
+    simp [evalOnPoints]
+  rw [hev, hdom (e.symm y), Equiv.apply_symm_apply]
 
 end
 
@@ -416,8 +461,9 @@ end
 
 open Finset in
 /-- The minimal code distance of an RS code of length `ι` and dimension `deg` is `ι - deg + 1`. -/
-theorem minDist [Field F] [DecidableEq F] (inj : Function.Injective α) [NeZero n] (h : n ≤ m) :
-    minDist ((ReedSolomon.code ⟨α, inj⟩ n) : Set (Fin m → F)) = m - n + 1 := by
+theorem minDist_eq [Field F] [DecidableEq F]
+    (inj : Function.Injective α) [NeZero n] (h : n ≤ m) :
+    Code.minDist ((ReedSolomon.code ⟨α, inj⟩ n) : Set (Fin m → F)) = m - n + 1 := by
   have : NeZero m := by constructor; aesop
   refine le_antisymm ?p₁ ?p₂
   case p₁ =>
@@ -449,7 +495,7 @@ theorem minDist [Field F] [DecidableEq F] (inj : Function.Injective α) [NeZero 
     omega
 
 /-- Generalized minimal code distance for RS code with arbitrary finite index type `ι`. -/
-theorem minDist' {ι : Type*} [Fintype ι] {F : Type*} [Field F] [DecidableEq F]
+theorem minDist_eq' {ι : Type*} [Fintype ι] {F : Type*} [Field F] [DecidableEq F]
     {α : ι ↪ F} [NeZero n] (h : n ≤ Fintype.card ι) :
   Code.minDist ((ReedSolomon.code α n) : Set (ι → F)) = Fintype.card ι - n + 1 := by
   classical
@@ -492,24 +538,24 @@ theorem minDist' {ι : Type*} [Fintype ι] {F : Type*} [Field F] [DecidableEq F]
 
 /-- Reed-Solomon codes are maximum distance separable (MDS). -/
 lemma isMDS_code {ι : Type} [Fintype ι] {F : Type*} [Field F] [DecidableEq F]
-  {α : ι ↪ F} [NeZero n] (h : n ≤ Fintype.card ι) : LinearCode.IsMDS (ReedSolomon.code α n) := by
+    {α : ι ↪ F} [NeZero n] (h : n ≤ Fintype.card ι) : LinearCode.IsMDS (ReedSolomon.code α n) := by
   classical
   unfold IsMDS
   rw [length_eq_domain_card', dim_eq_deg_of_le' h, Code.dist_eq_minDist]
-  exact minDist' h
+  exact minDist_eq' h
 
 /-- Generalized distance equality for RS code with arbitrary finite index type `ι`. -/
 theorem dist_eq' {ι : Type*} [Fintype ι] {F : Type*} {n : ℕ} {α : ι ↪ F}
     [Field F] [DecidableEq F] [NeZero n] (h : n ≤ Fintype.card ι) :
     Code.dist (R := F) ((ReedSolomon.code α n) : Set (ι → F)) = Fintype.card ι - n + 1 := by
   simp_rw [dist_eq_minDist]
-  rw [ReedSolomon.minDist' h]
+  rw [ReedSolomon.minDist_eq' h]
 
 theorem dist_eq {F : Type*} {m n : ℕ} {α : Fin m → F} [Field F] [DecidableEq F]
     (inj : Function.Injective α) [NeZero n] (h : n ≤ m) :
     Code.dist (R := F) ((ReedSolomon.code ⟨α, inj⟩ n) : Set (Fin m → F)) = m - n + 1 := by
   simp_rw [dist_eq_minDist]
-  rw [ReedSolomon.minDist inj h]
+  rw [ReedSolomon.minDist_eq inj h]
 
 /-- Generalized unique decoding radius for RS code with arbitrary finite index type `ι`. -/
 theorem uniqueDecodingRadius_RS_eq' {ι : Type*} [Fintype ι]
@@ -519,7 +565,7 @@ theorem uniqueDecodingRadius_RS_eq' {ι : Type*} [Fintype ι]
     (Fintype.card ι - n) / 2 := by
   simp only [uniqueDecodingRadius]
   rw [dist_eq_minDist]
-  rw [ReedSolomon.minDist' h]
+  rw [ReedSolomon.minDist_eq' h]
   simp [add_tsub_cancel_right]
 
 open NNReal in
@@ -715,6 +761,52 @@ def multiConstrainedCode
     { f |
       ∃ (h : f ∈ smoothCode domain m),
         ∀ i : Fin t, weightConstraint (mVdecode (⟨f, h⟩ : smoothCode domain m)) (w i) (σ i)}
+
+/-- Decoded multilinear polynomials of smooth codewords are degreewise linear. -/
+lemma mVdecode_mem_restrictDegree (u : smoothCode domain m) :
+    mVdecode u ∈ MvPolynomial.restrictDegree (Fin m) F 1 := by
+  rw [MvPolynomial.mem_restrictDegree_iff_degreeOf_le]
+  intro i
+  exact linearMvExtension_degreeOf_lt (p := decodeLT u)
+
+omit [DecidableEq F] in
+/-- For a degreewise-linear polynomial `p`, the weight constraint with the out-of-domain
+evaluation weight `Z · eq(r, X)` — value variable at index `0`, matching
+`toWeightAssignment` — holds iff `p(r) = σ`: by the multilinear-extension identity,
+`∑ b ∈ {0,1}^m, p(b) · eq(r, b) = p(r)`. -/
+lemma weightConstraint_eqPolynomial_iff
+    (p : MvPolynomial (Fin m) F) (hp : p ∈ MvPolynomial.restrictDegree (Fin m) F 1)
+    (r : Fin m → F) (σ : F) :
+    weightConstraint p
+      (MvPolynomial.X 0 * MvPolynomial.rename Fin.succ (MvPolynomial.eqPolynomial r)) σ
+      ↔ MvPolynomial.eval r p = σ := by
+  unfold weightConstraint
+  have hterm : ∀ b : Fin m → Fin 2,
+      MvPolynomial.eval (toWeightAssignment p b)
+        (MvPolynomial.X 0 * MvPolynomial.rename Fin.succ (MvPolynomial.eqPolynomial r))
+      = MvPolynomial.eval ((b : Fin m → F)) p
+          * MvPolynomial.eval r (MvPolynomial.eqPolynomial ((b : Fin m → F))) := by
+    intro b
+    rw [MvPolynomial.eval_mul, MvPolynomial.eval_X, MvPolynomial.eval_rename,
+      MvPolynomial.eqPolynomial_symm]
+    have h0 : toWeightAssignment p b 0 = MvPolynomial.eval ((b : Fin m → F)) p := by
+      simp only [toWeightAssignment, Fin.cases_zero]
+    have hsucc : toWeightAssignment p b ∘ Fin.succ = ((b : Fin m → F)) := by
+      funext j
+      simp only [Function.comp_apply, toWeightAssignment, Fin.cases_succ]
+    rw [h0, hsucc]
+  have hsum : (∑ b : Fin m → Fin 2,
+      MvPolynomial.eval (toWeightAssignment p b)
+        (MvPolynomial.X 0 * MvPolynomial.rename Fin.succ (MvPolynomial.eqPolynomial r)))
+      = MvPolynomial.eval r p := by
+    rw [Finset.sum_congr rfl (fun b _ => hterm b)]
+    conv_rhs => rw [← MvPolynomial.is_multilinear_iff_eq_evals_zeroOne.mp hp]
+    rw [MvPolynomial.MLE, map_sum]
+    refine Finset.sum_congr rfl fun b _ => ?_
+    rw [map_mul, MvPolynomial.eval_C]
+    unfold MvPolynomial.toEvalsZeroOne
+    ring
+  rw [hsum]
 
 end
 end ReedSolomon

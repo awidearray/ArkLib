@@ -24,7 +24,7 @@ open OracleComp
 This sends `(a : α) → γ (.inl a)` and `(b : β) → γ (.inr b)` to `(a : α ⊕ β) → γ a`. -/
 infixr:35 " ⊕ᵥ " => Sum.rec
 
--- Figure out where to put this instance
+-- Local option decidable equality instance used by oracle-reduction definitions.
 instance instDecidableEqOption {α : Type*} [DecidableEq α] :
     DecidableEq (Option α) := inferInstance
 
@@ -35,7 +35,7 @@ class VCVCompatible (α : Type*) extends Fintype α, Inhabited α where
 
 instance {α : Type*} [VCVCompatible α] : DecidableEq α := VCVCompatible.type_decidableEq'
 
--- TODO: port first to batteries, second to mathlib
+-- Candidate upstreaming targets: port the first lemma to Batteries and the second to mathlib.
 
 @[simp]
 theorem Vector.ofFn_get {α : Type*} {n : ℕ} (v : Vector α n) : Vector.ofFn (Vector.get v) = v := by
@@ -100,7 +100,7 @@ end Direction
 
 section Relation
 
--- TODO: use mathlib's `Rel` which will be `Set`-based in the next update
+-- This can use mathlib's `Rel` once it becomes `Set`-based upstream.
 
 /-- The associated language `Set α` for a relation `Set (α × β)`. -/
 @[reducible]

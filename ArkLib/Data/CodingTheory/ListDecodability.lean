@@ -61,4 +61,127 @@ def uniqueDecodable (C : Code ι F) (r : ℝ) : Prop :=
 
 end
 
+/-! ## ABF26 Definition 2.8 — list around a word `Λ(C, δ, f)` and `|Λ(C, δ)|`
+
+The paper writes `Λ(C, δ, f)` for the set of codewords of `C` whose relative Hamming distance
+from `f` is at most `δ`, and `|Λ(C, δ)| = max_f |Λ(C, δ, f)|` for the maximised list size.
+The point list `Λ(C, δ, f)` is already provided by `closeCodewordsRel C f δ` (see above); we
+do *not* introduce a paper-named alias for it. The new content here is `Lambda`, the maximised
+form used by Section 4's `ε_mca` (ABF26 Definition 4.3) and Section 3's list-decoding bounds.
+
+The basic algebra here (monotonicity, codeword-set bound) covers what is needed to state
+`ε_mca` in `ProximityGap.Errors.lean`. The full theory of `Lambda` — Johnson bound
+restatement, the interleaved-code list-size bound (ABF26 Lemma 2.10), generalized Singleton,
+volume-based lower bounds — is the subject of ABF26 §3 and is tracked under Phase 4 of
+`docs/kb/ABF26_PLAN.md`.
+-/
+
+section Lambda
+
+variable {ι : Type*} [Fintype ι] {F : Type*}
+
+/-- **ABF26 Definition 2.8 (maximised list size).** The maximum over words `f` of
+`|Λ(C, δ, f)| = |closeCodewordsRel C f δ|`. Named to match the paper's `|Λ(C, δ)|`. -/
+noncomputable def Lambda (C : Code ι F) (δ : ℝ) : ℕ∞ :=
+  ⨆ f : ι → F, ((closeCodewordsRel C f δ).ncard : ℕ∞)
+
+/-- The point list `Λ(C, δ, f) = closeCodewordsRel C f δ` is monotone in the radius. -/
+lemma closeCodewordsRel_subset_of_le {C : Code ι F} {δ₁ δ₂ : ℝ}
+    (h : δ₁ ≤ δ₂) (f : ι → F) :
+    closeCodewordsRel C f δ₁ ⊆ closeCodewordsRel C f δ₂ := by
+  intro c hc
+  exact ⟨hc.1, le_trans hc.2 h⟩
+
+/-- `Lambda` is monotone in the radius. -/
+lemma Lambda_mono {C : Code ι F} {δ₁ δ₂ : ℝ} [Finite F] (h : δ₁ ≤ δ₂) :
+    Lambda C δ₁ ≤ Lambda C δ₂ := by
+  refine iSup_mono fun f => ?_
+  have hfin : (closeCodewordsRel C f δ₂).Finite := Set.toFinite _
+  exact_mod_cast Set.ncard_le_ncard (closeCodewordsRel_subset_of_le h f) hfin
+
+/-- Any element of `Λ(C, δ, f) = closeCodewordsRel C f δ` is a codeword of `C`. -/
+lemma closeCodewordsRel_subset_code {C : Code ι F} (δ : ℝ) (f : ι → F) :
+    closeCodewordsRel C f δ ⊆ C := fun _ hc => hc.1
+
+/-- `|Λ(C, δ, f)| ≤ |C|` for finite `C`. -/
+lemma ncard_closeCodewordsRel_le_ncard {C : Code ι F} (δ : ℝ) (f : ι → F) (hC : C.Finite) :
+    (closeCodewordsRel C f δ).ncard ≤ C.ncard :=
+  Set.ncard_le_ncard (closeCodewordsRel_subset_code δ f) hC
+
+/-- `|Λ(C, δ)| ≤ |C|` for finite `C`. -/
+lemma Lambda_le_ncard {C : Code ι F} (δ : ℝ) (hC : C.Finite) :
+    Lambda C δ ≤ (C.ncard : ℕ∞) := by
+  refine iSup_le fun f => ?_
+  exact_mod_cast ncard_closeCodewordsRel_le_ncard δ f hC
+
+/-- Pointwise finite list-size bounds package into the maximised `Lambda` bound. -/
+lemma Lambda_le_natCast_of_forall_ncard_le {C : Code ι F} {δ : ℝ} {ℓ : ℕ}
+    (h : ∀ f : ι → F, (closeCodewordsRel C f δ).ncard ≤ ℓ) :
+    Lambda C δ ≤ (ℓ : ℕ∞) := by
+  unfold Lambda
+  refine iSup_le fun f => ?_
+  exact_mod_cast h f
+
+/-- ENat-valued variant of `Lambda_le_natCast_of_forall_ncard_le`. -/
+lemma Lambda_le_of_forall_ncard_le {C : Code ι F} {δ : ℝ} {ℓ : ℕ∞}
+    (h : ∀ f : ι → F, ((closeCodewordsRel C f δ).ncard : ℕ∞) ≤ ℓ) :
+    Lambda C δ ≤ ℓ := by
+  unfold Lambda
+  exact iSup_le h
+
+/-- Finset wrapper for the point list `Λ(C, δ, f)` when the ambient word space is finite. -/
+noncomputable def closeCodewordsRelFinset [Fintype F]
+    (C : Code ι F) (f : ι → F) (δ : ℝ) : Finset (ι → F) :=
+  by
+    classical
+    exact Finset.univ.filter fun c => c ∈ closeCodewordsRel C f δ
+
+/-- Membership in the finite point list agrees with the Set-based definition. -/
+lemma mem_closeCodewordsRelFinset [Fintype F] {C : Code ι F} {f c : ι → F} {δ : ℝ} :
+    c ∈ closeCodewordsRelFinset C f δ ↔ c ∈ closeCodewordsRel C f δ := by
+  classical
+  simp [closeCodewordsRelFinset]
+
+/-- The finite point-list cardinality agrees with the Set `ncard`. -/
+lemma card_closeCodewordsRelFinset_eq_ncard [Fintype F] {C : Code ι F}
+    (f : ι → F) (δ : ℝ) :
+    (closeCodewordsRelFinset C f δ).card = (closeCodewordsRel C f δ).ncard := by
+  classical
+  rw [← Set.ncard_coe_finset (closeCodewordsRelFinset C f δ)]
+  congr 1
+  ext c
+  simp [mem_closeCodewordsRelFinset]
+
+/-- Finset-cardinality variant of `Lambda_le_natCast_of_forall_ncard_le`. -/
+lemma Lambda_le_natCast_of_forall_closeFinset_card_le [Fintype F]
+    {C : Code ι F} {δ : ℝ} {ℓ : ℕ}
+    (h : ∀ f : ι → F, (closeCodewordsRelFinset C f δ).card ≤ ℓ) :
+    Lambda C δ ≤ (ℓ : ℕ∞) := by
+  apply Lambda_le_natCast_of_forall_ncard_le
+  intro f
+  rw [← card_closeCodewordsRelFinset_eq_ncard]
+  exact h f
+
+/-- If the maximised list size exceeds `ℓ`, some received word has a finite
+point-list with more than `ℓ` codewords. -/
+lemma exists_closeFinset_card_gt_of_natCast_lt_Lambda [Fintype F]
+    {C : Code ι F} {δ : ℝ} {ℓ : ℕ}
+    (h : (ℓ : ℕ∞) < Lambda C δ) :
+    ∃ f : ι → F, ℓ < (closeCodewordsRelFinset C f δ).card := by
+  unfold Lambda at h
+  rw [lt_iSup_iff] at h
+  rcases h with ⟨f, hf⟩
+  refine ⟨f, ?_⟩
+  rw [card_closeCodewordsRelFinset_eq_ncard]
+  exact_mod_cast hf
+
+/-- Contrapositive packaging helper for `Lambda ≤ ℓ`. -/
+lemma exists_closeFinset_card_gt_of_not_Lambda_le_natCast [Fintype F]
+    {C : Code ι F} {δ : ℝ} {ℓ : ℕ}
+    (h : ¬ Lambda C δ ≤ (ℓ : ℕ∞)) :
+    ∃ f : ι → F, ℓ < (closeCodewordsRelFinset C f δ).card := by
+  exact exists_closeFinset_card_gt_of_natCast_lt_Lambda (not_le.mp h)
+
+end Lambda
+
 end ListDecodable

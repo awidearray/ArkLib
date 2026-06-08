@@ -27,9 +27,58 @@
 
 /.claude/
 /.cursor/
+/.codex/
+/.review-scratch/
 /.venv/
 /.vscode/
 __pycache__/
+
+# Root-level agent scratch & one-off build artifacts — keep local, never commit to main
+# (issue #110/#60 build hygiene). Root-anchored so real modules under ArkLib/
+# (e.g. ArkLib/ProofSystem/RingSwitching/Scratch.lean) are unaffected.
+/scratch/
+/scratch*.lean
+/scratch*.py
+# Agent scratch tree under ArkLib/ — throwaway proof probes, never committed and
+# excluded from the ArkLib.lean umbrella (keeps update-lib.sh / check-imports.sh green).
+/ArkLib/Scratch/
+/patch*.py
+/*_err.txt
+/full_file.txt
+/.tmp_*
+
+# Vendored / scratch artifacts (review-only; not part of the repo content)
+# Reference PDFs (ABF26 + cited works), see references/MANIFEST.md if vendored.
+*.pdf
+# Ad-hoc review / inspection notes (claude_review.md, codex_review.md,
+# *_REVIEW*.md, CL_PR_COMMENT.md, CL_PR_COMMENTS_*.md, PRnnn_PR_COMMENT.md).
+claude_review.md
+codex_review.md
+*_REVIEW*.md
+CL_PR_COMMENT*.md
+CL_REVIEW_*.md
+CD_REVIEW_*.md
+TOYPROBLEM_REVIEW.md
+PR[0-9]*_REVIEW*.md
+PR[0-9]*_INLINE_COMMENTS.md
+PR[0-9]*_PR_COMMENT*.md
+# Downloaded HTML / paper dumps
+*.html
+"VEIL — Formal Verification Audit_files/"
+references/
+
+# ABF26 working notes — plans / reviews / roadmaps / bootstraps kept local, out of the PR
+/docs/kb/ABF26_*.md
+/docs/kb/queries/abf26-*.md
+# Upstream author source repo for the paper (canonical reference, kept local; pull to refresh)
+/ef-millenium/
+# ABF26 / kb helper tooling kept local (regenerate as needed)
+/scripts/abf26/
+/scripts/kb/extract_declarations.py
+/scripts/kb/find_dedup_candidates.py
+# Net-new generated catalogs (regenerate locally; not part of repo content)
+/docs/kb/_generated/declarations.json
+/docs/kb/_generated/dedup-report.md
 
 # Generated dependency analysis files
 /dependency_graphs/
@@ -37,3 +86,6 @@ __pycache__/
 # Generated documentation and temporary comparison
 /home_page/docs/
 /home_page/docs_original/
+
+# Generated codedb index snapshot (regenerate locally; not repo content)
+/codedb.snapshot

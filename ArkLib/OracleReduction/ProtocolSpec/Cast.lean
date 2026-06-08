@@ -7,15 +7,14 @@ Authors: Quang Dao
 import ArkLib.OracleReduction.ProtocolSpec.Basic
 
 /-!
-  # Casting for ProtocolSpec and related structures
+# Dependent Casting for Protocol Specifications
 
-  We define custom dependent casts (registered as `DCast` instances) for the following structures:
-  - `ProtocolSpec`
-  - `MessageIdx` and `ChallengeIdx`
-  - `(Full)Transcript`
-  - Related oracle interface instances
-
-  We also show basic properties about these casts.
+This module formalizes dependent casting functions and equivalence relations for `ProtocolSpec` and
+its associated components across round-count and specification equalities. In interactive oracle
+proofs, reductions are often defined over varying parameterizations of the protocol structure (e.g.,
+varying round counts or message spaces). Dependent casting allows safe transport of message indices
+(`MessageIdx`), challenge indices (`ChallengeIdx`), and transcripts (`Transcript`, `FullTranscript`)
+between structurally isomorphic specifications.
 -/
 
 open OracleComp
@@ -81,7 +80,7 @@ theorem cast_id : MessageIdx.cast (Eq.refl n₁) rfl = (id : pSpec₁.MessageIdx
 
 theorem cast_injective : Function.Injective (MessageIdx.cast hn hSpec) := by
   intro i j h'
-  simp [MessageIdx.cast] at h'
+  simp only [MessageIdx, MessageIdx.cast, Subtype.mk.injEq, Fin.cast_inj] at h'
   ext : 1
   exact h'
 
@@ -89,7 +88,7 @@ instance instDCast₂ : DCast₂ Nat ProtocolSpec (fun _ pSpec => MessageIdx pSp
   dcast₂ h := MessageIdx.cast h
   dcast₂_id := cast_id
 
-theorem cast_eq_dcast₂ {hn} {hSpec : pSpec₁.cast hn = pSpec₂} {i : MessageIdx pSpec₁}:
+theorem cast_eq_dcast₂ {hn} {hSpec : pSpec₁.cast hn = pSpec₂} {i : MessageIdx pSpec₁} :
     i.cast hn hSpec = dcast₂ hn hSpec i := rfl
 
 end MessageIdx
@@ -107,11 +106,6 @@ theorem cast_idx {i : MessageIdx pSpec₁} :
     pSpec₂.Message (i.cast hn hSpec) = pSpec₁.Message i :=
   cast_Type_idx hSpec
 
--- instance {Q : pSpec₁.MessageIdx → Type _}
---     [inst : ∀ i : pSpec₁.MessageIdx, OracleInterface (Q i) (pSpec₁.Message i)] :
---     ∀ i : (pSpec₁.cast hn).MessageIdx, OracleInterface (Q sorry) ((pSpec₁.cast hn).Message i) :=
---   fun i => inst (dcast₂ hn.symm (by rw [dcast_symm hn]; rfl) i)
-
 end Message
 
 namespace ChallengeIdx
@@ -125,7 +119,7 @@ theorem cast_id : ChallengeIdx.cast (Eq.refl n₁) rfl = (id : pSpec₁.Challeng
 
 theorem cast_injective : Function.Injective (ChallengeIdx.cast hn hSpec) := by
   intro i j h'
-  simp [ChallengeIdx.cast] at h'
+  simp only [ChallengeIdx, ChallengeIdx.cast, Subtype.mk.injEq, Fin.cast_inj] at h'
   ext : 1
   exact h'
 
@@ -133,7 +127,7 @@ instance instDCast₂ : DCast₂ Nat ProtocolSpec (fun _ pSpec => ChallengeIdx p
   dcast₂ h := ChallengeIdx.cast h
   dcast₂_id := cast_id
 
-theorem cast_eq_dcast₂ {hn} {hSpec : pSpec₁.cast hn = pSpec₂} {i : ChallengeIdx pSpec₁}:
+theorem cast_eq_dcast₂ {hn} {hSpec : pSpec₁.cast hn = pSpec₂} {i : ChallengeIdx pSpec₁} :
     i.cast hn hSpec = dcast₂ hn hSpec i := rfl
 
 end ChallengeIdx
@@ -173,13 +167,9 @@ instance instDCast₃ : DCast₃ Nat (fun n => Fin (n + 1)) (fun n _ => Protocol
     (fun _ k pSpec => pSpec.Transcript k) where
   dcast₃ h h' h'' T := Transcript.cast h
     (by simp only [dcast] at h'; rw [← h']; subst h; rfl)
-    (by simp [ProtocolSpec.cast_eq_dcast, dcast_eq_root_cast]; exact h'')
+    (by simp only [ProtocolSpec.cast_eq_dcast, dcast_eq_root_cast]; exact h'')
     T
   dcast₃_id := cast_id
-
--- theorem cast_eq_dcast₃ (h : m = n) (hIdx : k.val = l.val) (hSpec : pSpec₁.cast h = pSpec₂)
---     (T : Transcript pSpec₁ k) :
---     T.cast h hIdx hSpec  = (dcast₃ h (by sorry) sorry T : pSpec₂.Transcript l) := rfl
 
 end Transcript
 

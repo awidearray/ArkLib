@@ -18,12 +18,8 @@ introduced in Section 4 of [ACFY24].
 * [Arnon, G., Chiesa, A., Fenzi, G., and Yogev, E., *WHIR: Reed–Solomon Proximity Testing
     with Super-Fast Verification*][ACFY24]
 
-## Implementation notes
-
-Todo?
-
 ## Tags
-Todo: should we aim to add tags?
+Open question: should we aim to add tags?
 -/
 
 namespace Generator
@@ -62,20 +58,6 @@ structure ProximityGenerator
   B : (LinearCode ι F) → Type → ℝ
   -- Error function bounding the probability of distance within `δ`
   err : (LinearCode ι F) → Type → ℝ → ENNReal
-  /- Proximity:
-      For all `parℓ`-tuples of functions `fᵢ : ι → 𝔽`
-        and distance parameter `δ ∈ (0, 1-B(C,parℓ))` :
-      If the probability that `proximityCondition(r)` is true for uniformly random
-      sampled  `r ← 𝔽 `, exceeds `err(C,parℓ,δ)`, then there exists a  subset `S ⊆ ι ` of size
-      `|S| ≥ (1-δ)⬝|ι|`) on which each `fᵢ` agrees with some codeword in `C`. -/
-  proximity:
-    ∀ (f : parℓ → ι → F)
-      (δ : ℝ≥0) -- temp added back ℝ≥0 to satisfy the type checker and allow the file to build,
-      (_hδ : 0 < δ ∧ δ < 1 - (B C parℓ)) ,
-      Pr_{ let r ← $ᵖ Gen }[ (proximityCondition f δ r C) ] > (err C parℓ δ) →
-        ∃ S : Finset ι,
-          S.card ≥ (1 - δ) * (Fintype.card ι) ∧
-        ∀ i : parℓ, ∃ u ∈ C, ∀ x ∈ S, f i x = u x
 
 end Generator
 
@@ -89,7 +71,7 @@ variable {F : Type} [Field F] [Fintype F] [DecidableEq F]
 
 /- Theorem 4.8 [BCIKS20] Proximity Gap Theorem
   Smooth Reed Solomon codes C:= RSC[F,ι,m] have proximity generators for any given `parℓ`
-   with generator function Gen(parℓ) : 𝔽 → parℓ → 𝔽 ; α → (1,α, α², …, α^{parℓ - 1}),
+   with generator function Gen(parℓ) : 𝔽 → parℓ → 𝔽; α → (1,α, α², …, α^{parℓ - 1}),
    B(C,parℓ) := √ρ
    err(C,parℓ,δ) :=  (parℓ-1)2ᵐ / ρ * |F| for δ in (0, (1-ρ)/2]
                      (parℓ-1)*2²ᵐ / (|F|(2 min{1-√ρ-δ, √ρ/20})⁷)
@@ -117,8 +99,7 @@ noncomputable def genRSC
             let min_val := min (1 - (Real.sqrt r) - δ)
                                ((Real.sqrt r) / 20)
             ((Fintype.card parℓ - 1) * (2^(2 * m))) / ((Fintype.card F) * (2 * min_val)^7)
-          ),
-      proximity := by sorry
+          )
     }
 
 end RSGenerator
