@@ -14,7 +14,7 @@ import ArkLib.ToCompPoly.Univariate.Basic
 import Mathlib.Algebra.Field.ZMod
 import Mathlib.Algebra.Order.Star.Basic
 import Mathlib.Algebra.Polynomial.FieldDivision
-import VCVio.OracleComp.SimSemantics.Constructions
+import VCVio.OracleComp.SimSemantics.QueryImpl.Constructions
 import VCVio.OracleComp.QueryTracking.CachingOracle
 
 /-!
@@ -60,7 +60,7 @@ def commit (srs : Vector G₁ (n + 1)) (coeffs : Fin (n + 1) → ZMod p) : G₁ 
 def generateOpening [Fact (Nat.Prime p)] (srs : Vector G₁ (n + 1))
     (coeffs : Fin (n + 1) → ZMod p) (z : ZMod p) : G₁ :=
     letI poly : CPolynomial (ZMod p) := CPolynomial.ofFn coeffs
-    letI q : CPolynomial (ZMod p) := divByMonic (poly - C (eval z poly)) (X - C z)
+    letI q : CPolynomial (ZMod p) := CPolynomial.divByMonic (poly - C (eval z poly)) (X - C z)
     commit srs (fun i : Fin (n + 1) => q.coeff i)
 
 /-- To verify a KZG opening `opening` for a commitment `commitment` at point `z` with claimed

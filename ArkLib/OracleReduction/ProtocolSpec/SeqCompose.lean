@@ -7,10 +7,23 @@ Authors: Quang Dao
 import ArkLib.Data.Fin.Sigma
 import ArkLib.OracleReduction.ProtocolSpec.Cast
 
-/-! # Sequential Composition of Protocol Specifications
+/-!
+# Sequential Composition of Protocol Specifications
 
-This file collects all definitions and theorems about sequentially composing `ProtocolSpec`s and
-their associated data. -/
+This module formalizes the algebraic and structural operations required for the sequential
+composition of protocol specifications (`ProtocolSpec`). Given a collection of protocol
+specifications representing individual sub-protocols, sequential composition models their execution
+in sequence: the prover and verifier run the first protocol to completion, generating a transcript,
+and then proceed to the next protocol, potentially using the accumulated transcript state to
+determine inputs for subsequent phases.
+
+We define:
+1. Binary concatenation (`append` / `++ₚ`) of two specifications.
+2. N-ary sequential composition (`seqCompose`) over a family of specifications indexed by a finite
+   type.
+3. Relevant structures for partitioning, casting, and translating transcripts, messages, and
+   challenges across composed boundaries.
+-/
 
 universe u v
 
@@ -56,7 +69,7 @@ theorem append_left_injective {pSpec : ProtocolSpec n} :
     Function.Injective (@ProtocolSpec.append m n · pSpec) := by
   simp only [append, Fin.vappend_eq_append]
   intro x y h
-  simp at h
+  simp only [mk.injEq] at h
   obtain ⟨hDir, hType⟩ := h
   ext i
   · simp [Fin.append_left_injective pSpec.dir hDir]
@@ -67,7 +80,7 @@ theorem append_right_injective {pSpec : ProtocolSpec m} :
   unfold ProtocolSpec.append
   simp only [Fin.vappend_eq_append]
   intro x y h
-  simp at h
+  simp only [mk.injEq] at h
   obtain ⟨hDir, hType⟩ := h
   ext i
   · simp [Fin.append_right_injective pSpec.dir hDir]
@@ -117,21 +130,27 @@ variable {k : Fin (m + n + 1)}
 
 This is defined to be the full transcript for the first half if `k ≥ m`. -/
 def fst (T : (pSpec₁ ++ₚ pSpec₂).Transcript k) : pSpec₁.Transcript ⟨min k m, by omega⟩ :=
-  if hk : k ≤ m then
-    fun i => by
-    dsimp [take]; have := T ⟨i, lt_of_lt_of_le i.isLt (inf_le_left)⟩; simp at this; sorry
-    -- dcast (by sorry) (T ⟨i, lt_of_lt_of_le i.isLt (inf_le_left)⟩)
-  else
-    fun i => sorry
-    -- dcast (by sorry) (T ⟨i, by omega⟩)
+  fun i =>
+    have hi : i.val < m := by have := i.isLt; simp only [Fin.val_mk] at this; omega
+    cast (by
+      show Fin.vappend pSpec₁.Type pSpec₂.Type ⟨i.val, by omega⟩ = pSpec₁.Type ⟨i.val, hi⟩
+      rw [Fin.vappend_left_of_lt _ _ _ hi])
+      (T ⟨i, by have := i.isLt; simp only [Fin.val_mk] at this; omega⟩)
 
 /-- The second half of a partial transcript for a concatenated protocol. -/
 def snd (T : (pSpec₁ ++ₚ pSpec₂).Transcript k) : pSpec₂.Transcript ⟨k - m, by omega⟩ :=
   if hk : k ≤ m then
     fun i => Fin.elim0 (by simpa [hk] using i)
   else
-    fun i => sorry
-    -- dcast (by sorry) (T ⟨m + i, by simp_all; dsimp at i; have := i.isLt; omega⟩)
+    fun i =>
+    have hi : i.val < k.val - m := by have := i.isLt; simp only [Fin.val_mk] at this; omega
+    have hlt : ¬ (m + i.val) < m := by omega
+    cast (by
+      show Fin.vappend pSpec₁.Type pSpec₂.Type ⟨m + i.val, by omega⟩ = pSpec₂.Type ⟨i.val, by omega⟩
+      rw [Fin.vappend_right_of_not_lt _ _ _ hlt]
+      congr 1
+      simp)
+      (T ⟨m + i.val, by have := i.isLt; simp only [Fin.val_mk] at this; omega⟩)
 
 end Transcript
 
@@ -151,29 +170,33 @@ def concat {pSpec : ProtocolSpec n} {NextMessage : Type}
         FullTranscript (pSpec ++ₚ ⟨!v[dir], !v[NextMessage]⟩) :=
   Fin.hconcat T msg
 
--- TODO: fill
+/-- **Prefix/concat commutation for transcript append.**  Concatenating a final message onto a
+right-appended transcript `T₁ ++ₜ T₂` agrees — heterogeneously, up to the `++ₚ`-associativity of the
+underlying protocol specs (`((pSpec₁ ++ₚ pSpec₂) ++ₚ single)` vs `(pSpec₁ ++ₚ (pSpec₂ ++ₚ single))`)
+— with appending `T₁` onto the *right* transcript with the message already concatenated.  Since
+`concat = Fin.hconcat` and `++ₜ = Fin.happend`, this is the `FullTranscript`-level instance of the
+prefix/snoc commutation `Fin.happend_hconcat_eq`.
 
--- @[simp]
--- theorem append_cast_left {n m : ℕ} {pSpec₁ pSpec₂ : ProtocolSpec n} {pSpec' : ProtocolSpec m}
---     {T₁ : FullTranscript pSpec₁} {T₂ : FullTranscript pSpec'} (n' : ℕ)
---     (h : n + m = n' + m) (hSpec : dcast h pSpec₁ = pSpec₂) :
---       dcast₂ h (by simp) (T₁ ++ₜ T₂) = (dcast₂ (Nat.add_right_cancel h) (by simp) T₁) ++ₜ T₂ :=
--- by
---   simp [append, dcast₂, ProtocolSpec.cast, Fin.append_cast_left]
+This is the "(T)" transcript-prefix lemma consumed by the right-block run characterization of
+`Prover.append_run`: when the appended prover sends a right-block message, the appended transcript
+grows by a `concat` on the *outside* of the `transcript₁ ++ₜ ...` prefix, while the factored
+`liftM (P₂.run …)` grows by a `concat` on the *inner* `pSpec₂` transcript; this lemma identifies the
+two. -/
+theorem concat_append_right (T₁ : FullTranscript pSpec₁) (T₂ : FullTranscript pSpec₂)
+    (dir : Direction) {NextMessage : Type} (msg : NextMessage) :
+    HEq ((T₁ ++ₜ T₂).concat dir msg) (T₁ ++ₜ (T₂.concat dir msg)) := by
+  unfold FullTranscript.concat FullTranscript.append
+  exact (Fin.happend_hconcat_eq T₁ T₂ msg).symm
 
--- @[simp]
--- theorem append_cast_right {n m : ℕ} (pSpec : ProtocolSpec n) (pSpec' : ProtocolSpec m) (m' : ℕ)
---     (h : n + m = n + m') :
---       dcast h (pSpec ++ₚ pSpec') = pSpec ++ₚ (dcast (Nat.add_left_cancel h) pSpec') := by
---   simp [append, dcast, ProtocolSpec.cast, Fin.append_cast_right]
+
 
 @[simp]
 theorem take_append_left (T : FullTranscript pSpec₁) (T' : FullTranscript pSpec₂) :
     (T ++ₜ T').take m (Nat.le_add_right m n) =
       T.cast rfl (by simp [ProtocolSpec.append]) := by
   ext i
-  simp [take, append, ProtocolSpec.append, Fin.castLE,
-    FullTranscript.cast, Transcript.cast]
+  simp only [ProtocolSpec.append, take, append, Fin.take_apply, Fin.castLE,
+    FullTranscript.cast, Transcript.cast, Fin.val_last, Fin.cast_eq_self, take_Type]
   have : ⟨i.val, by omega⟩ = Fin.castAdd n i := by ext; simp
   rw! (castMode := .all) [this, Fin.happend_left]
   rfl
@@ -183,10 +206,12 @@ theorem rtake_append_right (T : FullTranscript pSpec₁) (T' : FullTranscript pS
     (T ++ₜ T').rtake n (Nat.le_add_left n m) =
       T'.cast rfl (by simp [ProtocolSpec.append]) := by
   ext i
-  simp [rtake, Fin.rtake, append, Fin.cast, FullTranscript.cast, Transcript.cast]
+  simp only [rtake, Fin.rtake, append, Fin.cast, Fin.val_natAdd,
+    FullTranscript.cast, Transcript.cast, Fin.val_last, Fin.cast_eq_self, take_Type]
   have : ⟨m + n - n + i.val, by omega⟩ = Fin.natAdd m i := by ext; simp
   rw! (castMode := .all) [this, Fin.happend_right]
-  sorry
+  apply eq_of_heq
+  refine HEq.trans (eqRec_heq _ _) (HEq.trans (cast_heq _ _) (cast_heq _ _).symm)
 
 /-- The first half of a transcript for a concatenated protocol -/
 def fst (T : FullTranscript (pSpec₁ ++ₚ pSpec₂)) : FullTranscript pSpec₁ :=
@@ -226,9 +251,10 @@ def MessageIdx.sumEquiv :
   toFun := Sum.elim (MessageIdx.inl) (MessageIdx.inr)
   invFun := fun ⟨i, h⟩ => by
     by_cases hi : i < m
-    · simp [Fin.vappend_eq_append, Fin.append, Fin.addCases, hi] at h
+    · simp only [Fin.vappend_eq_append, Fin.append, Fin.addCases, hi, ↓reduceDIte] at h
       exact Sum.inl ⟨⟨i, hi⟩, h⟩
-    · simp [Fin.vappend_eq_append, Fin.append, Fin.addCases, hi] at h
+    · simp only [Fin.vappend_eq_append, Fin.append, Fin.addCases, hi, ↓reduceDIte,
+        eq_rec_constant] at h
       exact Sum.inr ⟨⟨i - m, by omega⟩, h⟩
   left_inv := fun i => by
     rcases i with ⟨⟨i, isLt⟩, h⟩ | ⟨⟨i, isLt⟩, h⟩ <;>
@@ -250,9 +276,10 @@ def ChallengeIdx.sumEquiv :
   toFun := Sum.elim (ChallengeIdx.inl) (ChallengeIdx.inr)
   invFun := fun ⟨i, h⟩ => by
     by_cases hi : i < m
-    · simp [Fin.vappend_eq_append, Fin.append, Fin.addCases, hi] at h
+    · simp only [Fin.vappend_eq_append, Fin.append, Fin.addCases, hi, ↓reduceDIte] at h
       exact Sum.inl ⟨⟨i, hi⟩, h⟩
-    · simp [Fin.vappend_eq_append, Fin.append, Fin.addCases, hi] at h
+    · simp only [Fin.vappend_eq_append, Fin.append, Fin.addCases, hi, ↓reduceDIte,
+        eq_rec_constant] at h
       exact Sum.inr ⟨⟨i - m, by omega⟩, h⟩
   left_inv := fun i => by
     rcases i with ⟨⟨i, isLt⟩, h⟩ | ⟨⟨i, isLt⟩, h⟩ <;>
@@ -271,7 +298,7 @@ Defined for definitional equality, so that:
 - `seqCompose !v[pSpec₁, pSpec₂, pSpec₃] = pSpec₁ ++ₚ (pSpec₂ ++ₚ pSpec₃)`
 - and so on.
 
-TODO: add notation `∑ i, pSpec i` for `seqCompose` -/
+Notation candidate: `∑ i, pSpec i` for `seqCompose`. -/
 @[inline]
 def seqCompose {m : ℕ} {n : Fin m → ℕ} (pSpec : ∀ i, ProtocolSpec (n i)) :
     ProtocolSpec (Fin.vsum n) where
@@ -329,7 +356,7 @@ Defined for definitional equality, so that the following holds definitionally:
 - `seqCompose !h[T₁, T₂, T₃] = T₁ ++ₜ (T₂ ++ₜ T₃)`
 - and so on.
 
-TODO: add notation `∑ i, T i` for `seqCompose` -/
+Notation candidate: `∑ i, T i` for `seqCompose`. -/
 @[inline]
 def seqCompose {m : ℕ} {n : Fin m → ℕ} {pSpec : ∀ i, ProtocolSpec (n i)}
     (T : ∀ i, FullTranscript (pSpec i)) : FullTranscript (seqCompose pSpec) :=
@@ -404,45 +431,7 @@ instance [O₁ : ∀ i, OracleInterface (pSpec₁.Message i)]
 
 instance : ∀ i, OracleInterface ((pSpec₁ ++ₚ pSpec₂).Challenge i) := challengeOracleInterface
 
--- @[simp]
--- lemma challengeOracleInterface_append_domain_inl (j : pSpec₁.ChallengeIdx) :
---     [(pSpec₁ ++ₚ pSpec₂).Challenge]ₒ.domain (.inl j) = Unit := by
---   simp [OracleSpec.domain, ChallengeIdx.inl, ProtocolSpec.append, OracleInterface.toOracleSpec,
---     instOracleInterfaceChallengeAppend, challengeOracleInterface]
-
--- @[simp]
--- lemma challengeOracleInterface_append_range_inl (j : pSpec₁.ChallengeIdx) :
---     [(pSpec₁ ++ₚ pSpec₂).Challenge]ₒ.range (.inl j) = pSpec₁.Challenge j := by
---   simp [OracleSpec.range, ChallengeIdx.inl, ProtocolSpec.append, OracleInterface.toOracleSpec,
---     instOracleInterfaceChallengeAppend, challengeOracleInterface]
-
--- @[simp]
--- lemma challengeOracleInterface_append_domain_inr (j : pSpec₂.ChallengeIdx) :
---     [(pSpec₁ ++ₚ pSpec₂).Challenge]ₒ.domain (.inr j) = Unit := by
---   simp [OracleSpec.domain, ChallengeIdx.inr, ProtocolSpec.append, OracleInterface.toOracleSpec,
---     instOracleInterfaceChallengeAppend, challengeOracleInterface]
-
--- @[simp]
--- lemma challengeOracleInterface_append_range_inr (j : pSpec₂.ChallengeIdx) :
---     [(pSpec₁ ++ₚ pSpec₂).Challenge]ₒ.range (.inr j) = pSpec₂.Challenge j := by
---   simp [OracleSpec.range, ChallengeIdx.inr, ProtocolSpec.append, OracleInterface.toOracleSpec,
---     instOracleInterfaceChallengeAppend, challengeOracleInterface]
-
 variable [∀ i, SampleableType (pSpec₁.Challenge i)] [∀ i, SampleableType (pSpec₂.Challenge i)]
-
--- instance instSubSpecOfProtocolSpecAppendChallenge :
---     SubSpec ([pSpec₁.Challenge]ₒ + [pSpec₂.Challenge]ₒ) ([(pSpec₁ ++ₚ pSpec₂).Challenge]ₒ) where
---   monadLift | q => match q.1 with
---     | Sum.inl j => by
---       simpa using query (spec := [(pSpec₁ ++ₚ pSpec₂).Challenge]ₒ) ⟨j.2, ()⟩
---     | Sum.inr j => by
---       simpa using query (spec := [(pSpec₁ ++ₚ pSpec₂).Challenge]ₒ) j.inr ()
-
--- instance : SubSpec [pSpec₁.Challenge]ₒ ([(pSpec₁ ++ₚ pSpec₂).Challenge]ₒ) where
---   monadLift | query i t => instSubSpecOfProtocolSpecAppendChallenge.monadLift (query (Sum.inl i) t)
-
--- instance : SubSpec [pSpec₂.Challenge]ₒ ([(pSpec₁ ++ₚ pSpec₂).Challenge]ₒ) where
---   monadLift | query i t => instSubSpecOfProtocolSpecAppendChallenge.monadLift (query (Sum.inr i) t)
 
 end Append
 
@@ -456,21 +445,28 @@ def seqComposeChallengeIdxToSigma {m : ℕ} {n : Fin m → ℕ} {pSpec : ∀ i, 
     (k : (seqCompose pSpec).ChallengeIdx) : (i : Fin m) × (pSpec i).ChallengeIdx :=
   let ij := Fin.splitSum k.1
   ⟨ij.1, ⟨ij.2, by
-    simp [ij]; have := k.property; simp at this
+    simp only [ij]
+    have := k.property
+    simp only [seqCompose_dir] at this
     have hk : k.1 = Fin.embedSum ij.1 ij.2 := by simp [ij]
-    simp [hk] at this
+    simp only [hk, Fin.vflatten_embedSum] at this
     exact this⟩⟩
 
 /-- The equivalence between the challenge indices of the individual protocols and the challenge
     indices of the sequential composition. -/
 def seqComposeChallengeEquiv {m : ℕ} {n : Fin m → ℕ} (pSpec : ∀ i, ProtocolSpec (n i)) :
     (i : Fin m) × (pSpec i).ChallengeIdx ≃ (seqCompose pSpec).ChallengeIdx where
-  -- TODO: write lemmas about `finSigmaFinEquiv` in mathlib with the one defined via `Fin.dfoldl`
+  -- Note: write lemmas about `finSigmaFinEquiv` in mathlib with the one defined via `Fin.dfoldl`
   toFun := fun ⟨i, j⟩ => sigmaChallengeIdxToSeqCompose i j
   invFun := seqComposeChallengeIdxToSigma
   left_inv := by
-    intro ⟨_, _⟩; simp [seqComposeChallengeIdxToSigma, sigmaChallengeIdxToSeqCompose]
-    sorry
+    rintro ⟨i, ⟨j, hj⟩⟩
+    simp only [seqComposeChallengeIdxToSigma, sigmaChallengeIdxToSeqCompose]
+    have h := Fin.splitSum_embedSum (n := n) i j
+    have hf : (i.embedSum j).splitSum.fst = i := congrArg Sigma.fst h
+    refine Sigma.ext hf ?_
+    rw [Subtype.heq_iff_coe_heq (by rw [hf]) (by rw [hf])]
+    exact (Sigma.ext_iff.mp h).2
   right_inv := by intro; simp [seqComposeChallengeIdxToSigma, sigmaChallengeIdxToSeqCompose]
 
 def sigmaMessageIdxToSeqCompose {m : ℕ} {n : Fin m → ℕ} {pSpec : ∀ i, ProtocolSpec (n i)}
@@ -481,9 +477,11 @@ def seqComposeMessageIdxToSigma {m : ℕ} {n : Fin m → ℕ} {pSpec : ∀ i, Pr
     (k : (seqCompose pSpec).MessageIdx) : (i : Fin m) × (pSpec i).MessageIdx :=
   let ij := Fin.splitSum k.1
   ⟨ij.1, ⟨ij.2, by
-    simp [ij]; have := k.property; simp at this
+    simp only [ij]
+    have := k.property
+    simp only [seqCompose_dir] at this
     have hk : k.1 = Fin.embedSum ij.1 ij.2 := by simp [ij]
-    simp [hk] at this
+    simp only [hk, Fin.vflatten_embedSum] at this
     exact this⟩⟩
 
 /-- The equivalence between the message indices of the individual protocols and the message
@@ -493,8 +491,13 @@ def seqComposeMessageEquiv {m : ℕ} {n : Fin m → ℕ} {pSpec : ∀ i, Protoco
   toFun := fun ⟨i, msgIdx⟩ => sigmaMessageIdxToSeqCompose i msgIdx
   invFun := seqComposeMessageIdxToSigma
   left_inv := by
-    intro ⟨i, ⟨j, h⟩⟩ ; simp [seqComposeMessageIdxToSigma, sigmaMessageIdxToSeqCompose]
-    sorry
+    rintro ⟨i, ⟨j, hj⟩⟩
+    simp only [seqComposeMessageIdxToSigma, sigmaMessageIdxToSeqCompose]
+    have h := Fin.splitSum_embedSum (n := n) i j
+    have hf : (i.embedSum j).splitSum.fst = i := congrArg Sigma.fst h
+    refine Sigma.ext hf ?_
+    rw [Subtype.heq_iff_coe_heq (by rw [hf]) (by rw [hf])]
+    exact (Sigma.ext_iff.mp h).2
   right_inv := by intro; simp [seqComposeMessageIdxToSigma, sigmaMessageIdxToSeqCompose]
 
 instance {m : ℕ} {n : Fin m → ℕ} {pSpec : ∀ i, ProtocolSpec (n i)}

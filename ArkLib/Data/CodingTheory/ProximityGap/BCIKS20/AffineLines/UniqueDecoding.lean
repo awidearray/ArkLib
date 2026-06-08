@@ -9,6 +9,16 @@ import ArkLib.Data.CodingTheory.ProximityGap.BCIKS20.Prelude
 import ArkLib.Data.CodingTheory.ProximityGap.BCIKS20.ErrorBound
 import ArkLib.Data.CodingTheory.ProximityGap.BCIKS20.AffineLines.JointAgreement
 
+/-!
+# BCIKS20 affine lines — the unique-decoding regime
+
+This file proves correlated agreement over affine lines in the unique-decoding regime:
+`RS_correlatedAgreement_affineLines_uniqueDecodingRegime` shows that when the proximity parameter
+`δ` is below the relative unique-decoding radius of the Reed-Solomon code, the
+`δ`/`errorBound`-correlated-agreement statement over affine lines holds. It is the base case fed
+into the main affine-lines assembly.
+-/
+
 namespace ProximityGap
 
 open NNReal Finset Function ProbabilityTheory Code

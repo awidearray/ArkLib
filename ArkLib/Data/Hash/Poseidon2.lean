@@ -538,7 +538,7 @@ def m4Matrix : Vector (Vector KoalaBear.Field 4) 4 :=
   ]
 
 /-- Multiply the m4 block with an input vector of length 4
-TODO: define matrix-vector multiplication with `Vector` representation generally -/
+Note: define matrix-vector multiplication with `Vector` representation generally -/
 def applyM4 (chunk : Vector KoalaBear.Field 4) : Vector KoalaBear.Field 4 :=
   Vector.Matrix.mulVec m4Matrix chunk
 

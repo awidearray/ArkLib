@@ -70,6 +70,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      # ── Issue #47 gate 1: fast precheck (no Lean needed) ───────────
+      # validate.sh repeats this gate so the local wrapper mirrors CI; this
+      # dedicated step keeps laundering failures fast before Lean setup.
+      - name: Reject native_decide / bv_decide / custom axioms (precheck)
+        run: python3 scripts/forbidden_tokens.py
+
       - name: Set up Lean environment
         uses: leanprover/lean-action@v1.5.0
         with:
@@ -256,4 +262,3 @@ jobs:
             echo
             cat "$BUILD_TIMING_REPORT"
           } > "$BUILD_TIMING_COMMENT"
-

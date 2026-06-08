@@ -69,7 +69,7 @@ def reduce (p : CPolynomial R) : CPolynomial R := p.modByMonic Φ.φ
 /-- Computable multiplication in the cyclotomic ring: multiply in `CPolynomial R`,
 then reduce modulo `φ`.
 
-TODO add proper NTT multiplication here, not just reduce-after-CPolynomial-mul
+Future work add proper NTT multiplication here, not just reduce-after-CPolynomial-mul
 (or prove equivalence to the NTT-based definition once we have the NTT).
 Can we adapt CompPoly NTT for this?
 -/

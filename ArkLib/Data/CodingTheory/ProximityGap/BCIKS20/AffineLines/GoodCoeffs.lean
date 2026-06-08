@@ -9,6 +9,19 @@ import ArkLib.Data.CodingTheory.ProximityGap.BCIKS20.Prelude
 import ArkLib.Data.CodingTheory.ProximityGap.BCIKS20.AffineLines.BWMatrix
 import ArkLib.Data.CodingTheory.ReedSolomon
 
+/-!
+# BCIKS20 affine lines — the good-coefficient set and Berlekamp-Welch kernels
+
+This file defines `RS_goodCoeffs`, the set of combining coefficients `z` for which `u₀ + z • u₁`
+is `δ`-close to the Reed-Solomon code, and connects a lower bound on its cardinality to the
+Berlekamp-Welch homogeneous matrix `BW_homMatrix`. The main lemmas extract interpolating
+polynomials and matrix kernel vectors from membership / large cardinality of the good-coefficient
+set (`RS_exists_Pz_of_mem_goodCoeffs`, `RS_exists_kernelVec_BW_homMatrix_eval_of_mem_goodCoeffs`,
+`RS_BW_homMatrix_det_submatrix_eq_zero_of_goodCoeffs_card_gt`,
+`card_RS_goodCoeffs_gt_of_prob_gt_n_div_q`,
+`RS_exists_nonzero_kernelVec_BW_homMatrix_of_goodCoeffs_card_gt`).
+-/
+
 namespace ProximityGap
 
 open NNReal Finset Function ProbabilityTheory Code

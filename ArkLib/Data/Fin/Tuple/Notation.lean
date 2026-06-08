@@ -569,7 +569,7 @@ section FinVecConcatTests
 -- Basic concat operation
 example : !v[1, 2] :+ᵛ 3 = !v[1, 2, 3] := rfl
 
--- Chaining concat operations (left associative)
+-- Chaining concat operations (left-nested)
 example : !v[1] :+ᵛ 2 :+ᵛ 3 = !v[1, 2, 3] := rfl
 
 -- Mixing concat and bracket notation
@@ -619,7 +619,7 @@ section FinTupleConcatTests
 example : !h[(1 : ℕ), (true : Bool)] :+ʰ⟨ !v[ℕ, Bool]; String⟩ ("hello" : String) =
           !h⟨ !v[ℕ, Bool, String] ⟩[(1 : ℕ), (true : Bool), ("hello" : String)] := rfl
 
--- Chaining different types (left associative)
+-- Chaining different types (left-nested)
 -- example : !h[(1 : ℕ)] :+ʰ⟨ _; _⟩ (true ) :+ʰ⟨ !v[Bool]; _⟩ ("hello" : String) =
 --           !h[(1 : ℕ), (true : Bool), ("hello" : String)] := rfl
 
@@ -710,7 +710,7 @@ example : !v[1, 2] ++ᵛ !v[3, 4] = !v[1, 2, 3, 4] := rfl
 example : !v[1, 2] ++ᵛ (!v[] : Fin 0 → ℕ) = !v[1, 2] := rfl
 example : (!v[] : Fin 0 → ℕ) ++ᵛ !v[1, 2] = !v[1, 2] := rfl
 
--- Chaining appends (left associative)
+-- Chaining appends (left-nested)
 example : !v[1] ++ᵛ !v[2] ++ᵛ !v[3] = !v[1, 2, 3] := rfl
 
 -- Mixed with cons notation

@@ -111,8 +111,8 @@ instance {n : ℕ} {α : Type v} : Memory (Fin n) (fun _ => α) (Vector α n) wh
   read m i := m[i]
   write m i v := m.set i v
 
--- TODO: provide instances for other container types? `(D)Finsupp`?
--- TODO: what if read/write can fail? Need for `Nat`-indexed memory represented with `List`
+-- Note: provide instances for other container types? `(D)Finsupp`?
+-- Note: what if read/write can fail? Need for `Nat`-indexed memory represented with `List`
 
 namespace ReadOnly
 

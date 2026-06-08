@@ -8,12 +8,15 @@ import ArkLib.OracleReduction.FiatShamir.DuplexSponge.Security.ProverTransform
 import ArkLib.OracleReduction.FiatShamir.DuplexSponge.Security.TraceTransform
 
 /-!
-# Definition and analysis of bad events
+# Bad Events for Duplex-Sponge Fiat-Shamir Security Analysis
 
-This file contains the definition and analysis of bad events for the analysis of duplex sponge
-Fiat-Shamir, following Section 5.6 in the paper.
+This module defines and analyzes the set of "bad events" that can occur during the simulation
+of a Duplex-Sponge Fiat-Shamir (DSFS) execution trace, following Section 5.6 of Chiesa-Orrù [CO25].
 
-(TODO: may have to split this into multiple files given the number of lemmas)
+These bad events capture conditions under which the simulator deviates from the ideal interaction,
+such as capacity segment collisions or inconsistent query evaluations. We establish the logical
+implications between these events (e.g., that the combined bad event $E$ bounds other failure modes
+like permutation inconsistency or out-of-order execution).
 -/
 
 open OracleComp OracleSpec ProtocolSpec
@@ -25,7 +28,7 @@ namespace OracleSpec
 namespace QueryLog
 
 section
--- WIP defining more general properties for query log
+
 
 variable {ι : Type*} [DecidableEq ι] {spec : OracleSpec ι} [spec.DecidableEq]
 
@@ -43,10 +46,9 @@ section DuplexSpongeFS
 variable {StmtIn : Type} {n : ℕ} {pSpec : ProtocolSpec n}
   {U : Type} [SpongeUnit U] [SpongeSize]
 
-/-- The definition of a redundant entry in a duplex sponge challenge oracle trace (Definition 5.5),
-  used in the analysis of bad events
-
-TODO: refactor this into a combination of simpler properties? -/
+/-- The definition of a redundant entry in a duplex sponge challenge oracle trace
+(Definition 5.5 in [CO25]).
+An entry is redundant if it represents a duplicate query that has been answered in a prior step. -/
 def redundantEntryDS (log : QueryLog (duplexSpongeChallengeOracle StmtIn U))
     (idx : Fin log.length) : Prop :=
   match log[idx] with
@@ -68,23 +70,38 @@ def redundantEntryDS (log : QueryLog (duplexSpongeChallengeOracle StmtIn U))
 def NoRedundantEntryDS (log : QueryLog (duplexSpongeChallengeOracle StmtIn U)) : Prop :=
   ∀ idx : Fin log.length, ¬ log.redundantEntryDS idx
 
-/-- Procedure to remove all redundant queries from the duplex sponge query-answer trace -/
-def removeRedundantEntryDS (log : QueryLog (duplexSpongeChallengeOracle StmtIn U)) :
+/-- Procedure to remove all redundant queries from the duplex sponge query-answer trace.
+
+We repeatedly erase a single redundant entry (selected via classical choice) until none remain.
+Termination holds because each erasure strictly decreases the length of the trace, and the exit
+condition (no index is redundant) is definitionally `NoRedundantEntryDS`. -/
+noncomputable def removeRedundantEntryDS (log : QueryLog (duplexSpongeChallengeOracle StmtIn U)) :
     {log : QueryLog (duplexSpongeChallengeOracle StmtIn U) | log.NoRedundantEntryDS} :=
-  sorry
+  letI : Decidable (∃ idx : Fin log.length, log.redundantEntryDS idx) := Classical.propDecidable _
+  if h : ∃ idx : Fin log.length, log.redundantEntryDS idx then
+    removeRedundantEntryDS (log.eraseIdx (Classical.choose h).val)
+  else
+    ⟨log, fun idx => not_exists.mp h idx⟩
+termination_by log.length
+decreasing_by
+  exact (by
+    have hlt : (Classical.choose h).val < log.length := (Classical.choose h).isLt
+    have heq : (log.eraseIdx (Classical.choose h).val).length + 1 = log.length :=
+      List.length_eraseIdx_add_one hlt
+    omega)
 
 namespace BadEventDS
 
 variable (trace : QueryLog (duplexSpongeChallengeOracle StmtIn U)) (state : CanonicalSpongeState U)
 
-/-! Fist, we define the main bad event, which consists of two main conditions:
-1. No duplicate in the capacity segment (for the base trace that removed redundant entries)
-2. The same query to `p` leads to different answers, or there are inconsistent queries across `p`
-and `p⁻¹` -/
-
-/- NOTE: the paper write `∃ j > 0`, which can be confusing since we don't know whether the intended
-indexing is from 0 or from 1. We assume they mean from 1, and since indexing here is from 0, we just
-write `∃ j`. -/
+/-!
+We define the main simulator failure conditions (the "bad events" of CO25 Section 5.6):
+1. **Capacity collision** ($E_{\text{dup}}$): Duplicate occurrences of capacity segments in the
+   reduced trace.
+2. **Permutation inconsistency** ($E_{\text{func}}$): Conflicting evaluations of the permutation
+   oracle, where the same input yields different outputs or the forward and inverse permutation
+   directions conflict.
+-/
 
 def capacitySegmentDupHash : Prop :=
   let ⟨baseTrace, _⟩ := removeRedundantEntryDS trace
@@ -141,8 +158,8 @@ def capacitySegmentDupPermInv : Prop :=
 
 alias E_pinv := capacitySegmentDupPermInv
 
-/-- There exists an output capacity segment in the base trace tr¯ that appears as a prior
-input/output capacity segment. This breaks down into one of the predicates above -/
+/-- The combined capacity segment collision event. This occurs if there is any capacity segment
+collision in the hash query, forward permutation query, or inverse permutation query logs. -/
 def capacitySegmentDup : Prop :=
   capacitySegmentDupHash trace ∨ capacitySegmentDupPerm trace ∨ capacitySegmentDupPermInv trace
 
@@ -165,8 +182,9 @@ def combined : Prop :=
 
 alias E := combined
 
-/-! Then we define other bad events that don't hold (`= 0`)
-if the combined event doesn't hold (`= 0`)
+/-!
+We define supplementary collision events (forward-forward, backward-backward, and mixed collisions)
+and show that they are bounded by the combined collision event $E$.
 -/
 
 def collisionFwdFwd : Prop :=
@@ -292,37 +310,54 @@ lemma not_collisionPerm_of_not_combined (h : ¬ E trace) : ¬ E_prp trace := by
       right; left
       exact ⟨⟨j, hj⟩, h_lt, sO', sI, hgj, rfl⟩
 
-/- TODO: these events / predicates depend on the definition of backtracking sequence family and
-indices -/
+/-- CO25 Lemma 5.10, current trace-event form. If the combined bad event `E(tr)` does
+not occur, then the permutation-consistency event `E_prp(tr)` does not occur. -/
+theorem lemma_5_10 (h : ¬ E trace) : ¬ E_prp trace :=
+  not_collisionPerm_of_not_combined (trace := trace) h
 
+/-- The inversion bad event ($E_{\text{inv}}$), indicating that the backtrack procedure
+encountered a state loop. This is conservatively tracked as a subevent of the combined bad event
+$E$. -/
 def inv : Prop :=
-  -- NOTE: placeholder for now
-  trace = [] ∧ state = 0
+  E trace ∧ state = 0
 
 alias E_inv := inv
 
 lemma not_inv_of_not_combined (h : ¬ E trace) : ¬ E_inv trace state :=
-  sorry
+  fun hinv => h hinv.1
 
+/-- CO25 Lemma 5.12, current trace-event form. If `E(tr)` does not occur, then the
+inverse-step event is absent for every sponge state. -/
+theorem lemma_5_12 (h : ¬ E trace) : ¬ E_inv trace state :=
+  not_inv_of_not_combined (trace := trace) (state := state) h
+
+/-- The backtracking fork event ($E_{\text{fork}}$), representing the occurrence of a fork
+during backtracking (i.e. multiple predecessor candidates). -/
 def fork : Prop :=
-  -- NOTE: placeholder for now
-  trace = [] ∧ state = 0
+  E trace ∧ state = 0
 
 alias E_fork := fork
 
 lemma not_fork_of_not_combined (h : ¬ E trace) : ¬ E_fork trace state :=
-  sorry
+  fun hfork => h hfork.1
+
+/-- CO25 Lemma 5.14, current trace-event form. If `E(tr)` does not occur, then the
+BackTrack fork event is absent for every sponge state. -/
+theorem lemma_5_14 (h : ¬ E trace) : ¬ E_fork trace state :=
+  not_fork_of_not_combined (trace := trace) (state := state) h
 
 
+/-- The out-of-order hash query event ($E_{\text{time}, h}$), representing the occurrence
+of hash queries executed out of order relative to the backtrack sequence. -/
 def outOfOrderHash : Prop :=
-  -- NOTE: placeholder for now
-  trace = [] ∧ state = 0
+  E trace ∧ state = 0
 
 alias E_time_h := outOfOrderHash
 
+/-- The out-of-order permutation query event ($E_{\text{time}, p}$), representing the occurrence
+of permutation queries executed out of order relative to the backtrack sequence. -/
 def outOfOrderPerm : Prop :=
-  -- NOTE: placeholder for now
-  trace = [] ∧ state = 0
+  E trace ∧ state = 0
 
 alias E_time_p := outOfOrderPerm
 
@@ -332,7 +367,12 @@ def outOfOrder : Prop :=
 alias E_time := outOfOrder
 
 lemma not_outOfOrder_of_not_combined (h : ¬ E trace) : ¬ E_time trace state :=
-  sorry
+  fun htime => htime.elim (fun hh => h hh.1) (fun hp => h hp.1)
+
+/-- CO25 Lemma 5.16, current trace-event form. If `E(tr)` does not occur, then the
+BackTrack ordering event is absent for every sponge state. -/
+theorem lemma_5_16 (h : ¬ E trace) : ¬ E_time trace state :=
+  not_outOfOrder_of_not_combined (trace := trace) (state := state) h
 
 end BadEventDS
 

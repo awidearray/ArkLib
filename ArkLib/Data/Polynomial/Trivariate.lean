@@ -52,9 +52,20 @@ notation3:max "Z" => Polynomial.C (Polynomial.C Polynomial.X)
 
 /-- A ring homomorphism mapping a trivariate polynomial with coefficients in `F` and variables
 `Z, X, Y` to a bivariate polynomial with coefficients in `F` and variables in `X, Y` by evaluating
-on a point `z ∈ F`. -/
-noncomputable opaque eval_on_Z (p : F[Z][X][Y]) (z : F) : F[X][Y] :=
+on a point `z ∈ F`.
+
+Note: this was previously declared `opaque`, which seals the body away from ALL reasoning
+(no delta-reduction, no equation lemmas — even a definitionally-identical twin cannot be
+proven equal). That blocked direct reasoning about statements quantifying over `eval_on_Z`'s
+values (e.g. BCIKS20 Claim 5.7). Re-declared as a transparent `def` with an explicit equation
+lemma; the body is unchanged. -/
+noncomputable def eval_on_Z (p : F[Z][X][Y]) (z : F) : F[X][Y] :=
   p.map (Polynomial.mapRingHom (Polynomial.evalRingHom z))
+
+omit [DecidableEq (RatFunc F)] in
+/-- Definitional equation for `eval_on_Z` (the de-sealed body). -/
+lemma eval_on_Z_eq (p : F[Z][X][Y]) (z : F) :
+    eval_on_Z p z = p.map (Polynomial.mapRingHom (Polynomial.evalRingHom z)) := rfl
 
 open Polynomial.Bivariate in
 /-- A ring homomorphism mapping a trivariate polynomial to an element in the field of rational

@@ -29,9 +29,13 @@ module codes over (scalar) rings.
 - `δ_ε_correlatedAgreementCurves`: Correlated agreement for parametrised curves (k words)
 - `δ_ε_correlatedAgreementAffineSpaces`: Correlated agreement for affine subspaces (k+1 words)
 
-## TODOs
+## Extensions
 - weighted correlated agreement
-- mutual correlated agreement
+- mutual correlated agreement: a numeric `ε_mca(C, δ)` (ABF26 Definition 4.3) is now
+  available in `Errors.lean`. The WHIR proximity-generator version
+  (`hasMutualCorrAgreement`) in `ProofSystem/Whir/MutualCorrAgreement.lean` has a
+  predicate-level one-way bridge `proximityCondition_imp_mcaEvent_affineLine`; the
+  full numeric re-expression remains open (tracked as ABF26-D4.3 follow-up).
 - generalize the CA definitions using proximity generator?
 
 ## References
@@ -102,7 +106,7 @@ noncomputable def δ_ε_proximityGap {α : Type} [DecidableEq α] [Nonempty α]
 /-- Definition: `(δ, ε)`-correlated agreement for affine lines.
 For every pair of words `u₀, u₁`, if the probability that a random affine line `u₀ + z • u₁` is
 `δ`-close to `C` exceeds `ε`, then `u₀` and `u₁` have correlated agreement with `C`.
--- **TODO**: prove that `δ_ε_correlatedAgreementAffineLines` implies `δ_ε_proximityGap`
+-- **NOTE**: prove that `δ_ε_correlatedAgreementAffineLines` implies `δ_ε_proximityGap`
 -/
 noncomputable def δ_ε_correlatedAgreementAffineLines [Module F A]
     (C : Set (ι → A)) (δ ε : ℝ≥0) : Prop :=
@@ -116,7 +120,7 @@ with respect to the proximity parameter `δ` and the error bound `ε`, folding d
   (a random multilinear combination of the word stack `u` with randomness `r` is `δ`-close to `C`)
   exceeds `ε`, then the word stack `u` has correlated agreement with `C ^⋈ (2^ϑ)`. -/
 def δ_ε_multilinearCorrelatedAgreement [CommRing F] [Module F A]
-  (C : Set (ι → A)) (ϑ : ℕ) (δ ε : ℝ≥0) : Prop :=
+    (C : Set (ι → A)) (ϑ : ℕ) (δ ε : ℝ≥0) : Prop :=
   ∀ (u : WordStack A (Fin (2^ϑ)) ι),
     Pr_{let r ← $ᵖ (Fin ϑ → F)}[ -- This syntax only works with (A : Type 0)
       δᵣ(r |⨂| u, C) ≤ δ

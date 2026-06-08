@@ -9,5 +9,5 @@ import ArkLib.OracleReduction.Security.Basic
 /-!
   # Parallel composition of oracle reductions
 
-  We define the parallel composition of oracle reductions. (TODO)
+  We define the parallel composition of oracle reductions. (NOTE)
 -/

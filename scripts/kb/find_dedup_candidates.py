@@ -124,7 +124,7 @@ def render_short_name_report(groups: dict[str, list[dict]], min_group: int) -> l
                      f"{len({d['file'] for d in ds})} files)")
         lines.append("")
         for d in sorted(ds, key=lambda x: (x["file"], x["line"])):
-            doc = d["doc"][:100].replace("|", "\\|")
+            doc = d["doc"][:100].rstrip().replace("|", "\\|")
             lines.append(
                 f"- `{d['kind']} {d['name']}` "
                 f"[{d['file']}:{d['line']}](../../../{d['file']}#L{d['line']}) "
@@ -173,14 +173,27 @@ def render_doc_similarity_report(data: dict, threshold: float) -> list[str]:
                 # overloads, and cross-file dups are the point of the report.
                 if a["file"] == b["file"]:
                     continue
-                key = tuple(sorted([a["name"], b["name"]]))
+                pair = tuple(sorted(
+                    [a, b],
+                    key=lambda d: (d["name"], d["file"], d["line"]),
+                ))
+                key = tuple((d["name"], d["file"], d["line"]) for d in pair)
                 if key in seen_pairs:
                     continue
                 seen_pairs.add(key)
-                s = _jaccard(a["_words"], b["_words"])
+                a_norm, b_norm = pair
+                s = _jaccard(a_norm["_words"], b_norm["_words"])
                 if s >= threshold:
-                    hits.append((s, a, b))
-    hits.sort(key=lambda h: (-h[0], h[1]["name"], h[2]["name"]))
+                    hits.append((s, a_norm, b_norm))
+    hits.sort(key=lambda h: (
+        -h[0],
+        h[1]["name"],
+        h[1]["file"],
+        h[1]["line"],
+        h[2]["name"],
+        h[2]["file"],
+        h[2]["line"],
+    ))
 
     lines: list[str] = []
     lines.append(f"## Near-duplicate docstrings (Jaccard ≥ {threshold:.2f}, "
@@ -199,8 +212,8 @@ def render_doc_similarity_report(data: dict, threshold: float) -> list[str]:
             f"vs `{b['name']}` "
             f"[{b['file']}:{b['line']}](../../../{b['file']}#L{b['line']})"
         )
-        lines.append(f"    - a: {a['doc'][:100]}")
-        lines.append(f"    - b: {b['doc'][:100]}")
+        lines.append(f"    - a: {a['doc'][:100].rstrip()}")
+        lines.append(f"    - b: {b['doc'][:100].rstrip()}")
     lines.append("")
     return lines
 

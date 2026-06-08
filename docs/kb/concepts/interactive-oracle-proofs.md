@@ -10,6 +10,11 @@ Use this page when a question is about:
 - why `VectorIOR` exists as a specialization;
 - where the repo points to the original IOP literature.
 
+For the architecture of the interactive-oracle-reduction layer itself (prover/verifier interaction
+model, oracle verifiers and the `embed` mechanism, execution semantics, security definitions, and
+composition), see the companion concept page
+[`oracle-reductions.md`](oracle-reductions.md).
+
 ## Core References
 
 - [`../papers/BCS16.md`](../papers/BCS16.md) - current landing page for the original IOP

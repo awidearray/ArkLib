@@ -29,7 +29,8 @@ open OracleComp CommitmentScheme CompPoly ArkLib.Lattices ArkLib.Lattices.Cyclot
 
 namespace ArkLib.Lattices.Ajtai.Simple
 
-variable {R : Type} [Field R] [BEq R] [LawfulBEq R] (Φ : CyclotomicModulus R) [IsCyclotomic Φ]
+variable {R : Type} [Field R] [BEq R] [LawfulBEq R] [DecidableEq R]
+  (Φ : CyclotomicModulus R) [IsCyclotomic Φ]
 
 /-- Boolean monotonicity of `pure` outcome probability. -/
 private theorem probOutput_pure_bool_le (b₁ b₂ : Bool) (h : b₁ = true → b₂ = true) :
@@ -101,8 +102,11 @@ theorem bindingAdvantage_le_moduleSIS {rows cols : Nat}
           (fun z => decide (vecL2NormSq Φ z ≤ subL2NormSqBound boundSq)) adv) :=
   bindingAdvantage_le_moduleSIS_of_shortClosure Φ _ _
     (fun s₁ s₂ h₁ h₂ => by
-      simp only [decide_eq_true_eq] at h₁ h₂ ⊢
-      exact sub_l2NormSq_le Φ s₁ s₂ h₁ h₂)
+      have h₁' : vecL2NormSq Φ s₁ ≤ boundSq := by
+        simpa only [decide_eq_true_eq] using h₁
+      have h₂' : vecL2NormSq Φ s₂ ≤ boundSq := by
+        simpa only [decide_eq_true_eq] using h₂
+      simpa only [decide_eq_true_eq] using sub_l2NormSq_le Φ s₁ s₂ h₁' h₂')
     adv
 
 end ArkLib.Lattices.Ajtai.Simple

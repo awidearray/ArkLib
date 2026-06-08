@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Quang Dao
 -/
 import ArkLib.OracleReduction.LiftContext.OracleReduction
+import ArkLib.OracleReduction.Security.OracleZeroKnowledge
 
 /-!
 # Simple Oracle Reduction: Random Query
@@ -21,6 +22,7 @@ of the same type. The relation is `a = b`.
 -/
 
 open OracleSpec OracleComp OracleQuery OracleInterface ProtocolSpec
+open scoped NNReal
 
 variable {ι : Type} (oSpec : OracleSpec ι) (OStatement : Type) [O : OracleInterface OStatement]
   [inst : SampleableType (Query OStatement)]
@@ -51,6 +53,9 @@ def relOut : Set ((StmtOut OStatement × ∀ i, OStmtOut OStatement i) × WitOut
 
 @[reducible]
 def pSpec : ProtocolSpec 1 := ⟨!v[.V_to_P], !v[Query OStatement]⟩
+
+instance : ∀ i, SampleableType ((pSpec OStatement).Challenge i)
+  | ⟨0, _⟩ => inst
 
 /--
 The prover is trivial: it has no messages to send.  It only receives the verifier's challenge `q`,
@@ -98,7 +103,7 @@ its output statement also contains the challenge `q`.
 -/
 @[inline, specialize]
 def oracleReduction :
-  OracleReduction oSpec Unit (fun _ : Fin 2 => OStatement) Unit
+    OracleReduction oSpec Unit (fun _ : Fin 2 => OStatement) Unit
     (Query OStatement) (fun _ : Fin 2 => OStatement) Unit (pSpec OStatement) where
   prover := oracleProver oSpec OStatement
   verifier := oracleVerifier oSpec OStatement
@@ -182,6 +187,109 @@ theorem oracleReduction_completeness :
     rintro ⟨⟨rfl, rfl⟩, rfl⟩
     refine ⟨?_, rfl, ?_⟩ <;> congr 1
 
+/-- The simulator for `RandomQuery`: the protocol is witness-free, so the simulator can rerun
+the honest transcript distribution using the public oracle input and the unique `Unit` witness. -/
+def transcriptSimulator :
+    @OracleReduction.TranscriptSimulator ι oSpec Unit (Fin 2) (OStmtIn OStatement) 1
+      (pSpec OStatement) :=
+  fun stmtIn =>
+    Reduction.honestTranscriptDist init impl
+      (oracleReduction.{0} oSpec OStatement).toReduction stmtIn ()
+
+/-- The honest transcript distribution for `RandomQuery` is definitionally the simulator
+distribution. -/
+theorem honestTranscriptDist_oracleReduction_evalDist
+    (stmtIn : StmtIn × (∀ i, OStmtIn OStatement i)) :
+    evalDist (Reduction.honestTranscriptDist init impl
+        (oracleReduction.{0} oSpec OStatement).toReduction stmtIn ()) =
+      evalDist (transcriptSimulator (oSpec := oSpec) (OStatement := OStatement)
+        (init := init) (impl := impl) stmtIn) := rfl
+
+/-- `RandomQuery` is perfectly HVZK as an oracle reduction: it has no private witness, and the
+single verifier challenge is sampled by the same honest challenge implementation in the simulator. -/
+theorem oracleReduction_perfectHVZK :
+    OracleReduction.perfectHVZK init impl (relIn OStatement)
+      (oracleReduction.{0} oSpec OStatement)
+      (transcriptSimulator (oSpec := oSpec) (OStatement := OStatement)
+        (init := init) (impl := impl)) := by
+  intro stmtIn () _
+  exact (honestTranscriptDist_oracleReduction_evalDist (oSpec := oSpec)
+    (OStatement := OStatement) (init := init) (impl := impl) stmtIn).symm
+
+/-- Perfect HVZK implies statistical HVZK for `RandomQuery` at every error budget. -/
+theorem oracleReduction_statisticalHVZK (ε : NNReal) :
+    OracleReduction.statisticalHVZK init impl (relIn OStatement)
+      (oracleReduction.{0} oSpec OStatement)
+      (transcriptSimulator (oSpec := oSpec) (OStatement := OStatement)
+        (init := init) (impl := impl)) ε :=
+  (oracleReduction_perfectHVZK (oSpec := oSpec) (OStatement := OStatement)
+    (init := init) (impl := impl)).statisticalHVZK ε
+
+/-- `RandomQuery` has an explicit perfect-HVZK simulator as an oracle reduction. -/
+theorem oracleReduction_isHVZK :
+    OracleReduction.isHVZK init impl (relIn OStatement) (oracleReduction.{0} oSpec OStatement) :=
+  ⟨transcriptSimulator (oSpec := oSpec) (OStatement := OStatement)
+      (init := init) (impl := impl),
+    oracleReduction_perfectHVZK (oSpec := oSpec) (OStatement := OStatement)
+      (init := init) (impl := impl)⟩
+
+/-- `RandomQuery` has statistical HVZK at every error budget as an oracle reduction. -/
+theorem oracleReduction_isStatHVZK (ε : NNReal) :
+    OracleReduction.isStatHVZK init impl (relIn OStatement)
+      (oracleReduction.{0} oSpec OStatement) ε :=
+  (oracleReduction_isHVZK (oSpec := oSpec) (OStatement := OStatement)
+    (init := init) (impl := impl)).isStatHVZK ε
+
+/-- The underlying non-oracle reduction of `RandomQuery` is perfectly HVZK. -/
+theorem oracleReduction_toReduction_perfectHVZK :
+    Reduction.perfectHVZK init impl (relIn OStatement)
+      (oracleReduction.{0} oSpec OStatement).toReduction
+      (transcriptSimulator (oSpec := oSpec) (OStatement := OStatement)
+        (init := init) (impl := impl)) :=
+  oracleReduction_perfectHVZK (oSpec := oSpec) (OStatement := OStatement)
+    (init := init) (impl := impl)
+
+/-- The underlying non-oracle reduction of `RandomQuery` is statistically HVZK at every error
+budget. -/
+theorem oracleReduction_toReduction_statisticalHVZK (ε : NNReal) :
+    Reduction.statisticalHVZK init impl (relIn OStatement)
+      (oracleReduction.{0} oSpec OStatement).toReduction
+      (transcriptSimulator (oSpec := oSpec) (OStatement := OStatement)
+        (init := init) (impl := impl)) ε :=
+  oracleReduction_statisticalHVZK (oSpec := oSpec) (OStatement := OStatement)
+    (init := init) (impl := impl) ε
+
+/-- The underlying non-oracle reduction of `RandomQuery` has an explicit perfect-HVZK
+simulator. -/
+theorem oracleReduction_toReduction_isHVZK :
+    Reduction.isHVZK init impl (relIn OStatement)
+      (oracleReduction.{0} oSpec OStatement).toReduction :=
+  ⟨transcriptSimulator (oSpec := oSpec) (OStatement := OStatement)
+      (init := init) (impl := impl),
+    oracleReduction_toReduction_perfectHVZK (oSpec := oSpec) (OStatement := OStatement)
+      (init := init) (impl := impl)⟩
+
+/-- The underlying non-oracle reduction of `RandomQuery` has statistical HVZK at every error
+budget. -/
+theorem oracleReduction_toReduction_isStatHVZK (ε : NNReal) :
+    Reduction.isStatHVZK init impl (relIn OStatement)
+      (oracleReduction.{0} oSpec OStatement).toReduction ε :=
+  ⟨transcriptSimulator (oSpec := oSpec) (OStatement := OStatement)
+      (init := init) (impl := impl),
+    oracleReduction_toReduction_statisticalHVZK (oSpec := oSpec)
+      (OStatement := OStatement) (init := init) (impl := impl) ε⟩
+
+#print axioms RandomQuery.transcriptSimulator
+#print axioms RandomQuery.honestTranscriptDist_oracleReduction_evalDist
+#print axioms RandomQuery.oracleReduction_perfectHVZK
+#print axioms RandomQuery.oracleReduction_statisticalHVZK
+#print axioms RandomQuery.oracleReduction_isHVZK
+#print axioms RandomQuery.oracleReduction_isStatHVZK
+#print axioms RandomQuery.oracleReduction_toReduction_perfectHVZK
+#print axioms RandomQuery.oracleReduction_toReduction_statisticalHVZK
+#print axioms RandomQuery.oracleReduction_toReduction_isHVZK
+#print axioms RandomQuery.oracleReduction_toReduction_isStatHVZK
+
 -- def langIn : Set (Unit × (∀ _ : Fin 2, OStatement)) := setOf fun ⟨(), oracles⟩ =>
 --   oracles 0 = oracles 1
 
@@ -198,15 +306,26 @@ def stateFunction [Inhabited OStatement] : (oracleVerifier oSpec OStatement).Sta
   toFun_empty := fun stmt => by simp
   toFun_next | 0 => fun hDir ⟨stmt, oStmt⟩ tr h => by simp_all
   toFun_full := fun ⟨stmt, oStmt⟩ tr h => by
-    sorry
-    -- simp_all only [Fin.reduceLast, Fin.isValue, OStmtIn, Nat.reduceAdd, Fin.coe_ofNat_eq_mod,
-    --   Nat.reduceMod, Fin.zero_eta, StmtOut, OStmtOut, StmtIn, StateT.run'_eq, Set.language, WitOut,
-    --   relOut, Set.mem_image, Set.mem_setOf_eq, Prod.exists, exists_const, exists_eq_right,
-    --   probEvent_eq_zero_iff, support_bind, support_map, Set.mem_iUnion, exists_and_right,
-    --   exists_prop, forall_exists_index, and_imp, Prod.forall]
-    -- intro a b s hs s' hSupp
-    -- simp [OracleVerifier.toVerifier, Verifier.run, oracleVerifier] at hSupp
-    -- simp [hSupp.1, h]
+    -- The verifier deterministically returns `(tr.challenges ⟨0, rfl⟩, oStmt)`. If the answers at
+    -- that query differ (hypothesis `h`), the output is never in `relOut.language`, so prob is 0.
+    rw [probEvent_eq_zero_iff]
+    intro x hx
+    rw [OptionT.mem_support_iff] at hx
+    simp only [OptionT.run_mk, support_bind, Set.mem_iUnion] at hx
+    obtain ⟨s, _, hx⟩ := hx
+    simp only [OracleVerifier.toVerifier, oracleVerifier, Verifier.run, StateT.run'_eq,
+      support_map, Set.mem_image, Prod.exists] at hx
+    obtain ⟨val, s', hmem, heq⟩ := hx
+    erw [simulateQ_pure] at hmem
+    simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff, Prod.mk.injEq] at hmem
+    obtain ⟨rfl, -⟩ := hmem
+    -- `x = (tr.challenges ⟨0, rfl⟩, oStmt)`; not in `relOut.language` since answers differ.
+    injection heq with hx
+    subst x
+    simp only [Set.language, relOut, Set.mem_image, Set.mem_setOf_eq, Prod.exists, exists_const,
+      exists_eq_right]
+    intro hrel
+    exact h (by simpa [FullTranscript.challenges, pSpec] using hrel)
 
 /-- The round-by-round extractor is trivial since the output witness is `Unit`. -/
 def rbrExtractor : Extractor.RoundByRound oSpec
@@ -226,9 +345,26 @@ def knowledgeStateFunction :
     answer (oracles 0) q = answer (oracles 1) q
   toFun_empty := fun stmt => by simp
   toFun_next | 0 => fun hDir ⟨stmt, oStmt⟩ tr h => by simp_all
-  toFun_full := fun ⟨stmt, oStmt⟩ tr _ => by
-    sorry
-    -- simp_all [oracleVerifier, OracleVerifier.toVerifier, Verifier.run]
+  toFun_full := fun ⟨stmt, oStmt⟩ tr witOut => by
+    -- Bind via `intro` to avoid an expensive `isDefEq` against the heavy `verifier.run` field type.
+    intro h
+    rw [gt_iff_lt, probEvent_pos_iff] at h
+    obtain ⟨x, hx, hrel⟩ := h
+    rw [OptionT.mem_support_iff] at hx
+    simp only [OptionT.run_mk, support_bind, Set.mem_iUnion] at hx
+    obtain ⟨s, _, hx⟩ := hx
+    -- The verifier deterministically returns `(tr.challenges ⟨0, rfl⟩, oStmt)`.
+    simp only [OracleVerifier.toVerifier, oracleVerifier, Verifier.run, StateT.run'_eq,
+      support_map, Set.mem_image, Prod.exists] at hx
+    obtain ⟨val, s', hmem, heq⟩ := hx
+    erw [simulateQ_pure] at hmem
+    simp only [StateT.run_pure, support_pure, Set.mem_singleton_iff, Prod.mk.injEq] at hmem
+    obtain ⟨rfl, -⟩ := hmem
+    injection heq with hxout
+    subst x
+    -- `hrel` is the output relation membership; the goal is the `toFun` body for the last round.
+    simp only [relOut, Set.mem_setOf_eq] at hrel
+    simpa [FullTranscript.challenges, pSpec] using hrel
 
 variable [Fintype (Query OStatement)] [∀ q, DecidableEq (O.toOC.spec q)]
 
@@ -258,33 +394,51 @@ theorem oracleVerifier_rbrKnowledgeSoundness [Nonempty (Query OStatement)]
   subst i
   dsimp at oracles
   simp [Prover.runWithLogToRound, Prover.runToRound, rbrExtractor, knowledgeStateFunction]
-  sorry
-  -- unfold SimOracle.append
-  -- simp [challengeQueryImpl]
-  -- classical
-  -- simp only [probEvent_bind_eq_tsum]
-  -- simp [ProtocolSpec.Transcript.concat, Fin.snoc, default]
-  -- unfold Function.comp
-  -- dsimp
-  -- calc
-  -- _ ≤ ((Finset.card
-  --   {x | ¬oracles 0 = oracles 1 ∧ answer (oracles 0) x = answer (oracles 1) x} : ENNReal) /
-  --       (Fintype.card (Query OStatement))) := by
-  --   rw [ENNReal.tsum_mul_right]
-  --   grw [OracleComp.tsum_probOutput_le_one]
-  --   simp
-  -- _ ≤ (((d : ℝ≥0) / (Fintype.card (Query OStatement)))) := by
-  --   gcongr
-  --   simp
-  --   by_cases hOracles : oracles 0 = oracles 1
-  --   · simp [hOracles]
-  --   · simp [hOracles]
-  --     exact hDist (oracles 0) (oracles 1) hOracles
-  -- _ = _ := by
-  --   refine (ENNReal.toNNReal_eq_toNNReal_iff' ?_ ?_).mp ?_
-  --   · simp; intro h'; apply ENNReal.div_eq_top.mp at h'; simp at h'
-  --   · simp; intro h'; apply ENNReal.div_eq_top.mp at h'; simp at h'
-  --   · simp
+  erw [simulateQ_bind]
+  simp only [MonadLift.monadLift, liftM, monadLift, MonadLiftT.monadLift]
+  simp only [pure_bind, bind_assoc, map_pure, StateT.run'_eq, StateT.run_bind, map_bind]
+  erw [simulateQ_pure]
+  simp only [loggingOracle, simulateQ_pure, WriterT.run_pure, pure_bind, map_pure,
+    StateT.run_pure, StateT.run_bind, QueryImpl.simulateQ_add_liftComp_right]
+  erw [simulateQ_bind, QueryImpl.simulateQ_add_liftComp_right]
+  erw [simulateQ_spec_query]
+  simp only [QueryImpl.liftTarget_apply, challengeQueryImpl, StateT.run_bind, map_bind, pure_bind]
+  classical
+  rw [probEvent_bind_eq_tsum]
+  refine le_trans (ENNReal.tsum_le_tsum
+    (g := fun s => Pr[= s | init] * ((d : ENNReal) / (Fintype.card (Query OStatement) : ENNReal)))
+    fun s => mul_le_mul' le_rfl ?_) ?_
+  · rw [probEvent_bind_eq_tsum]
+    have hc2 : ∀ (x : Query OStatement × σ),
+        ((fun y => y.1) <$> (simulateQ
+            (impl + QueryImpl.liftTarget (StateT σ ProbComp)
+              (challengeQueryImpl (pSpec := pSpec OStatement)))
+            (pure (default, x.1, ∅))).run x.2)
+        = (pure (default, x.1, ∅) :
+            ProbComp (Transcript 0 (pSpec OStatement) × Query OStatement ×
+              (oSpec + [(pSpec OStatement).Challenge]ₒ'challengeOracleInterface).QueryLog)) := by
+      intro x
+      erw [simulateQ_pure]
+      rw [StateT.run_pure, map_pure]
+    apply le_trans (le_of_eq (tsum_congr fun x =>
+      congrArg (fun mz => _ * probEvent mz _) (hc2 x)))
+    rw [← probEvent_bind_eq_tsum]
+    erw [StateT.run_lift]
+    simp only [bind_assoc, pure_bind]
+    show (probEvent ((fun x => (default, x, ∅)) <$> ($ᵗ _)) _) ≤ _
+    rw [probEvent_map]
+    simp only [Function.comp_def, ProtocolSpec.Transcript.concat, Fin.snoc]
+    rw [probEvent_uniformSample]
+    rcases Classical.em (oracles 0 = oracles 1) with h01 | h01
+    · simp [h01]
+    · refine ENNReal.div_le_div_right ?_ _
+      refine le_trans (Nat.cast_le.mpr (Finset.card_le_card ?_))
+        (Nat.cast_le.mpr (hDist (oracles 0) (oracles 1) h01))
+      intro q hq
+      simp only [Finset.mem_filter, Finset.mem_univ, true_and] at hq ⊢
+      simpa using hq.2
+  · rw [ENNReal.tsum_mul_right]
+    exact le_trans (mul_le_mul' tsum_probOutput_le_one le_rfl) (by rw [one_mul])
 
 end RandomQuery
 
@@ -294,7 +448,8 @@ end RandomQuery
 --   Random query where we throw away the second oracle, and replace with the response:
 --   - The input relation is `{ ⟨⟨_, 𝒪⟩, _⟩ | 𝒪 0 = 𝒪 1 }`.
 --   - The output relation is `{ ⟨⟨q, r⟩, 𝒪⟩, _⟩ | oracle (𝒪 0) q = r }`.
---   - The (oracle) verifier sends a single random query `q` to the prover, queries the oracle `𝒪 1` at
+--   - The (oracle) verifier sends a single random query `q` to the prover, queries the oracle
+--     `𝒪 1` at
 --     `q` to get response `r`, returns `(q, r)` as the output statement, and drop `𝒪 1` from the
 --     output oracle statement.
 
@@ -315,8 +470,8 @@ end RandomQuery
 --   oracles 0 = oracles 1
 
 -- /--
--- The final relation states that the first oracle `oStmt ()` agrees with the response `r` at the query
--- `q`.
+-- The final relation states that the first oracle `oStmt ()` agrees with the response `r` at the
+-- query `q`.
 -- -/
 -- @[reducible, simp]
 -- def relOut : (StmtOut OStatement × ∀ i, OStmtOut OStatement i) → WitOut → Prop :=

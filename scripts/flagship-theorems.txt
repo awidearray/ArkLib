@@ -1,0 +1,52 @@
+# Flagship theorems for axiom audit — issue #47
+#
+# Format: FILE_PATH  FULLY_QUALIFIED_THEOREM_NAME
+#
+# These are the core verified results whose axiom hygiene must be maintained
+# in CI. Only propext, Classical.choice, and Quot.sound are permitted.
+#
+# To add a theorem: append a line with the .lean file path (relative to repo
+# root) and the fully-qualified theorem name, separated by whitespace.
+#
+# Sourced from: docs/kb/audits/proximity-prize/integration-2026-06-05/final_axiom_audit.lean,
+# per-file #print axioms blocks, and core protocol/scheme results.
+
+# ── Top-level proximity-prize / correlated-agreement results ───────────
+# These are the 5 key theorems from the consolidated axiom audit:
+ArkLib/Data/CodingTheory/ProximityGap/BCIKS20/ReedSolomonGap.lean  ProximityGap.proximity_gap_RSCodes
+
+# ── KZG commitment scheme ──────────────────────────────────────────────
+ArkLib/CommitmentScheme/KZG/Correctness.lean  KZG.CommitmentScheme.correctness
+ArkLib/CommitmentScheme/KZG/Binding.lean  KZG.CommitmentScheme.map_binding_to_t_sdh_of_two_valid_openings
+
+# ── Merkle tree extraction ─────────────────────────────────────────────
+ArkLib/CommitmentScheme/MerkleTree/Extraction.lean  InductiveMerkleTree.opening_binding
+ArkLib/CommitmentScheme/MerkleTree/Extraction.lean  InductiveMerkleTree.extracted_leaf_unique
+
+# ── Berlekamp-Welch decoder ────────────────────────────────────────────
+ArkLib/Data/CodingTheory/BerlekampWelch/BerlekampWelch.lean  BerlekampWelch.decoder_eq_some
+
+# ── Johnson bound ──────────────────────────────────────────────────────
+ArkLib/Data/CodingTheory/JohnsonBound/Basic.lean  JohnsonBound.johnson_condition_weak_implies_strong
+
+# ── Hensel existence (flagship theorem) ────────────────────────────────
+ArkLib/Data/Polynomial/HenselExistence.lean  ProximityPrize.HenselExistence.exists_powerSeries_root
+
+# ── Guruswami-Sudan list-size bound ────────────────────────────────────
+ArkLib/Data/CodingTheory/GuruswamiSudan/ListSizeBound.lean  GSListSizeBound.gs_list_size_bound
+
+# ── BKR06 subspace polynomial ──────────────────────────────────────────
+ArkLib/Data/CodingTheory/ListDecoding/BKR06SubspacePoly.lean  BKR06.subspacePoly_natDegree
+
+# ── BCIKS20 correlated agreement keystone (curves + lines) ─────────────
+ArkLib/Data/CodingTheory/ProximityGap/BCIKS20/Curves.lean  ProximityGap.correlatedAgreement_affine_curves
+ArkLib/Data/CodingTheory/ProximityGap/BCIKS20/AffineLines/Main.lean  ProximityGap.RS_correlatedAgreement_affineLines
+
+# ── Grand-challenge collapse (kernel-proven refutation + collapse) ─────
+ArkLib/Data/CodingTheory/ProximityGap/GrandChallengeCollapse.lean  ProximityGap.not_listDecodingPrize
+ArkLib/Data/CodingTheory/ProximityGap/GrandChallengeCollapse.lean  ProximityGap.grandMCAChallenge_iff_epsMCA_one
+ArkLib/Data/CodingTheory/ProximityGap/GrandChallengesLattice.lean  ProximityGap.GrandChallengesLattice.mcaThreshold_spec
+
+# ── BKR06 tight family (unconditional) ─────────────────────────────────
+ArkLib/ToMathlib/SubspacePolyLinearized.lean  BKR06.bkr06_tight_family_hfamily_unconditional
+ArkLib/Data/CodingTheory/ListDecoding/Bounds.lean  CodingTheory.large_alphabet_barrier_bdg24_agl23

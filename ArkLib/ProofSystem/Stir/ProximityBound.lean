@@ -8,6 +8,17 @@ import Mathlib.Data.Finset.Basic
 import Mathlib.Data.Real.Basic
 import Mathlib.Data.Real.Sqrt
 
+/-!
+# STIR proximity bound and proximity error functions
+
+This file defines the proximity parameters used by the STIR low-degree test (Section 4.1).
+
+* `STIR.Bstar` — the proximity bound function `B⋆(x) = √x` on a code rate `x : ℝ≥0`.
+* `STIR.proximityError` — the proximity error function `err⋆(d, ρ, δ, m)`, given by the
+  unique-decoding-radius bound for small `δ`, the list-decoding-radius bound for `δ` up to
+  `1 - √ρ`, and `0` outside the valid range.
+-/
+
 open NNReal
 
 namespace STIR
